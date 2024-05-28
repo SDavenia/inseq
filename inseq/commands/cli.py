@@ -11,20 +11,24 @@ COMMANDS: list[BaseCLICommand] = [AttributeCommand, AttributeDatasetCommand, Att
 
 
 def main():
+    print(f"Entering main: ")
     parser = InseqArgumentParser(prog="Inseq CLI tool", usage="inseq <COMMAND> [<ARGS>]")
     command_parser = parser.add_subparsers(title="Inseq CLI command helpers")
 
     for command_type in COMMANDS:
         command_type.register_subcommand(command_parser)
-
+    
+    # Extract all args from the command line
     args = parser.parse_args()
 
     if not hasattr(args, "factory_method"):
         parser.print_help()
         sys.exit(1)
 
-    # Run
+    # Extract command and check the args corresponding to that command
     command, command_args = args.factory_method(args)
+    # print(f"Command is: {command}") 
+    # print(f"Command args is: {command_args}")
     command.run(command_args)
 
 

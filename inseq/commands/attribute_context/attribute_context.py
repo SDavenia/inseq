@@ -83,6 +83,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         decoder_input_output_separator=args.decoder_input_output_separator,
     )
     output_full_text = format_template(args.output_template, args.output_current_text, args.output_context_text)
+    print(f"input_full_text: {input_full_text}")
+    print(f"output_context_text: {args.output_context_text}")
+    print(f"output_current_text: {args.output_current_text}")
+    print(f"output_full_text: {output_full_text}")
 
     # Tokenize inputs/outputs and compute offset
     input_context_tokens = None
@@ -90,6 +94,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         input_context_tokens = get_filtered_tokens(args.input_context_text, model, args.special_tokens_to_keep)
     if not model.is_encoder_decoder:
         output_full_text = concat_with_sep(input_full_text, output_full_text, args.decoder_input_output_separator)
+        print(f"now output_full_text is : {output_full_text}")
     output_current_tokens = get_filtered_tokens(
         args.output_current_text, model, args.special_tokens_to_keep, is_target=True
     )
@@ -109,10 +114,17 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         formatted_output_current_text = formatted_input_current_text + formatted_output_current_text
 
+        #print(f"formatted_input_current_text: {formatted_input_current_text}")
+        #print(f"formatted_output_current_text: {formatted_output_current_text}")
+
     # Part 1: Context-sensitive Token Identification (CTI)
+    print(f"model.attribute is called with the following parameters:")
+    print(f"Input texts: {formatted_input_current_text}")
+    print(f"Generated texts: {formatted_output_current_text}")
+    print(f"Contrast targets: {output_full_text}")
     cti_out = model.attribute(
-        formatted_input_current_text.rstrip(" "),
-        formatted_output_current_text,
+        input_texts=formatted_input_current_text.rstrip(" "),
+        generated_texts=formatted_output_current_text,
         attribute_target=model.is_encoder_decoder,
         step_scores=[args.context_sensitivity_metric],
         contrast_sources=input_full_text if model.is_encoder_decoder else None,
@@ -122,7 +134,6 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     )[0]
     if args.show_intermediate_outputs:
         cti_out.show(do_aggregation=False)
-
     start_pos = 1 if has_lang_tag else 0
     contextless_output_prefix = args.contextless_output_current_text.split("{current}")[0]
     contextless_output_prefix_tokens = get_filtered_tokens(
@@ -152,11 +163,14 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     )
     # Part 2: Contextual Cues Imputation (CCI)
     for cci_step_idx, (cti_idx, cti_score, cti_tok) in enumerate(cti_ranked_tokens):
+        print(f"Processing token {cti_idx} with score {cti_score} and token {cti_tok}")
         contextual_input = model.convert_tokens_to_string(input_full_tokens, skip_special_tokens=False).lstrip(" ")
         contextual_output = model.convert_tokens_to_string(
             output_full_tokens[: output_current_text_offset + cti_idx + 1], skip_special_tokens=False
         ).lstrip(" ")
-        if not contextual_output:
+        print(f"Contextual input: {contextual_input}")
+        print(f"Contextual output: {contextual_output}")
+        if not contextual_output: # Not really sure how this could occur? 
             output_ctx_tokens = [output_full_tokens[output_current_text_offset + cti_idx]]
             if model.is_encoder_decoder:
                 output_ctx_tokens.append(model.pad_token)
@@ -168,7 +182,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         cci_kwargs = {}
         contextless_output = None
         if args.attributed_fn is not None and is_contrastive_step_function(args.attributed_fn):
+            print(f"Using a contrastive step function:")
             if not model.is_encoder_decoder:
+                # In our case remains the same since contextless_output_prefix is empty since we are not using nested prefixes
                 formatted_input_current_text = concat_with_sep(
                     formatted_input_current_text, contextless_output_prefix, args.decoder_input_output_separator
                 )
@@ -185,16 +201,27 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 args.special_tokens_to_keep,
                 deepcopy(args.generation_kwargs),
             )
+            print(f"Contextless output: {contextless_output}")
             cci_kwargs["contrast_sources"] = formatted_input_current_text if model.is_encoder_decoder else None
             cci_kwargs["contrast_targets"] = contextless_output
             output_ctxless_tokens = model.convert_string_to_tokens(
                 contextless_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
             tok_pos = -2 if model.is_encoder_decoder else -1
+            # If we are using kl divergence for attributed_fn or if the token is the same in the context and contextless output.
             if args.attributed_fn == "kl_divergence" or output_ctx_tokens[tok_pos] == output_ctxless_tokens[tok_pos]:
+                print(f"SETTING CONTRAST_FORCE_INPUTS TO TRUE")
                 cci_kwargs["contrast_force_inputs"] = True
         bos_offset = int(model.is_encoder_decoder or output_ctx_tokens[0] == model.bos_token)
         pos_start = output_current_text_offset + cti_idx + bos_offset + int(has_lang_tag)
+        print(f"Calling model attribute with:")
+        print(f"Contextual input: {contextual_input}")
+        print(f"Contextual output: {contextual_output}")
+        print(f"Position start: {pos_start}")
+        print(f"Attributed function: {args.attributed_fn}")
+        print(f"Attribution method: {args.attribution_method}")
+        print(f"CCI Kwargs: {cci_kwargs}") 
+        
         cci_attrib_out = model.attribute(
             contextual_input,
             contextual_output,
