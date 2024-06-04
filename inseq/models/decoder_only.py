@@ -41,6 +41,14 @@ class DecoderOnlyInputFormatter(InputFormatter):
         include_eos_baseline: bool = False,
         skip_special_tokens: bool = False,
     ) -> DecoderOnlyBatch:
+        """ 
+        Prepares the input for attribution, i.e. it prepares a DecoderOnlyBatch object from the input.
+        This contains:
+            - encoding: a BatchEncodingObject (input_ids, attention_mask, input_tokens, baseline_ids)
+            - embedding: a BatchEmbeddingObject (input_embeds, baseline_embeds)
+        """
+        print(f"Calling prepare_inputs_for_attributions (decoder only)")
+        print(f"Inputs are: {inputs}")
         batch = get_batch_from_inputs(
             attribution_model,
             inputs=inputs,
@@ -48,6 +56,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
             as_targets=False,
             skip_special_tokens=skip_special_tokens,
         )
+        print(f"Returning\n{DecoderOnlyBatch.from_batch(batch)}")
         return DecoderOnlyBatch.from_batch(batch)
 
     @staticmethod
@@ -61,6 +70,15 @@ class DecoderOnlyInputFormatter(InputFormatter):
         forward_batch_embeds: bool = True,
         use_baselines: bool = False,
     ) -> tuple[dict[str, Any], tuple[Union[IdsTensor, EmbeddingsTensor, None], ...]]:
+        """
+        This function is called for every step of the attribution process (i.e. for each generated token after the input.) to format the args.
+        It returns a dictionary containing:
+            - inputs: i.e. the embeddings of the ids of the input + generated tokens so far
+            - additional_forward_args: a tuple containing:
+                - input_ids of the input + generated tokens so far
+                - target_ids: the target token id (i.e. the token that was force generated in this step)
+        """
+        print(f"Calling format_attribution_args (decoder only)")
         if attribute_batch_ids:
             inputs = (batch.input_ids,)
             baselines = (batch.baseline_ids,)
@@ -88,6 +106,9 @@ class DecoderOnlyInputFormatter(InputFormatter):
         }
         if use_baselines:
             attribute_fn_args["baselines"] = baselines
+        #print(f"Returning: attribute_fn_args")
+        #print(f"    Inputs have shape: {attribute_fn_args['inputs'][0].shape}")
+        #print(f"    Additional forward args are:\n{attribute_fn_args['additional_forward_args']}")
         return attribute_fn_args
 
     @staticmethod
@@ -100,6 +121,11 @@ class DecoderOnlyInputFormatter(InputFormatter):
         contrast_batch: Optional[DecoderOnlyBatch] = None,
         contrast_targets_alignments: Optional[list[list[tuple[int, int]]]] = None,
     ) -> FeatureAttributionStepOutput:
+        """
+        Adds to the step_output object additional information. It is called after each step.
+        In our case it simply adds the prefix and (i.e. input + generated words so far) and the target (i.e. generated token at this step.)
+        """
+
         r"""Enriches the attribution output with token information, producing the finished
         :class:`~inseq.data.FeatureAttributionStepOutput` object.
 
@@ -113,6 +139,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
         Returns:
             :class:`~inseq.data.FeatureAttributionStepOutput`: The enriched attribution output.
         """
+        print(f"Calling enrich_step_output (decoder only)")
         if target_ids.ndim == 0:
             target_ids = target_ids.unsqueeze(0)
         step_output.source = None
@@ -158,6 +185,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
         decoder_input_embeds: Optional[EmbeddingsTensor] = None,
         **kwargs,
     ) -> DecoderOnlyBatch:
+        print(f"Calling convert_args_to_batch (decoder only)")
         if args is not None:
             decoder_input_ids = args.decoder_input_ids
             decoder_attention_mask = args.decoder_attention_mask

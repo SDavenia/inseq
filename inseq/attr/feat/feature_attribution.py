@@ -126,6 +126,9 @@ class FeatureAttribution(Registry):
         model_name_or_path: Optional[ModelIdentifier] = None,
         **kwargs,
     ) -> "FeatureAttribution":
+        """
+        Generic class for attribution methods like dummy or saliency. Saliency for example is a child of a child class and is defined in CAPTUM library.
+        """
         r"""Load the selected method and hook it to an existing or available
         attribution model.
 
@@ -240,6 +243,8 @@ class FeatureAttribution(Registry):
         # attributed_fn is already a Callable. Keep here to allow for usage independently
         # of AttributionModel.attribute.
         attributed_fn = self.attribution_model.get_attributed_fn(attributed_fn)
+
+        # After preparation call the attribution
         attribution_output = self.attribute(
             batch,
             attributed_fn=attributed_fn,
@@ -405,6 +410,7 @@ class FeatureAttribution(Registry):
                 an optional added list of single :class:`~inseq.data.FeatureAttributionStepOutput` for each step and
                 extra information regarding the attribution parameters.
         """
+        print(f"Calling attribute from inseq/attr/feat/feature_attribution.py")
         if self.attribute_batch_ids and not self.forward_batch_embeds and attribute_target:
             raise ValueError(
                 "Layer attribution methods do not support attribute_target=True. Use regular attributions instead."
@@ -417,6 +423,8 @@ class FeatureAttribution(Registry):
         )
         logger.debug("=" * 30 + f"\nfull batch: {batch}\n" + "=" * 30)
         # Sources are empty for decoder-only models
+
+        # Prepare sequences
         sequences = self.attribution_model.formatter.get_text_sequences(self.attribution_model, batch)
         (
             contrast_batch,
@@ -467,11 +475,12 @@ class FeatureAttribution(Registry):
 
         start = datetime.now()
 
-        # Attribution loop for generation
+        # Attribution loop for generation: iterate through every generation step.
         for step in range(attr_pos_start, iter_pos_end):
             if self.is_final_step_method and step != iter_pos_end - 1:
                 continue
             tgt_ids, tgt_mask = batch.get_step_target(step, with_attention=True)
+            # Compute step
             step_output = self.filtered_attribute_step(
                 batch[:step],
                 target_ids=tgt_ids.unsqueeze(1),
@@ -714,6 +723,7 @@ class DummyAttribution(FeatureAttribution):
     def attribute_step(
         self, attribute_fn_main_args: dict[str, Any], attribution_args: dict[str, Any] = {}
     ) -> FeatureAttributionStepOutput:
+        print(f"Calling dummy attribution step from inseq/attr/feat/feature_attribution.py")
         return FeatureAttributionStepOutput(
             source_attributions=None,
             target_attributions=None,

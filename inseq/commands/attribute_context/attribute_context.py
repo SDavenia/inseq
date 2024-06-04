@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     """Attribute the generation of context-sensitive tokens in ``output_current_text`` to input/output contexts."""
+    print(f"Loading model...")
     model: HuggingfaceModel = load_model(
         args.model_name_or_path,
         args.attribution_method,
@@ -62,6 +63,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
 
 
 def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceModel) -> AttributeContextOutput:
+    print(f"Calling attribute_context_with_model from inseq.commands.attribute_context.attribute_context.py")
     # Handle language tag for multilingual models - no need to specify it in generation kwargs
     has_lang_tag = "tgt_lang" in args.tokenizer_kwargs
     if has_lang_tag and "forced_bos_token_id" not in args.generation_kwargs:
@@ -69,7 +71,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         args.generation_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[tgt_lang]
 
     # Prepare input/outputs (generate if necessary)
+    print(f"Preparing input/output (generate if necessary)")
+    print(f"    Calling format_template on the input")
     input_full_text = format_template(args.input_template, args.input_current_text, args.input_context_text)
+    print(f"    Calling prepare outputs")
     args.output_context_text, args.output_current_text = prepare_outputs(
         model=model,
         input_context_text=args.input_context_text,
@@ -82,19 +87,24 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         special_tokens_to_keep=args.special_tokens_to_keep,
         decoder_input_output_separator=args.decoder_input_output_separator,
     )
+    print(f"    Calling format template on the output")
     output_full_text = format_template(args.output_template, args.output_current_text, args.output_context_text)
-    print(f"input_full_text: {input_full_text}")
-    print(f"output_context_text: {args.output_context_text}")
-    print(f"output_current_text: {args.output_current_text}")
-    print(f"output_full_text: {output_full_text}")
+    
+    #print(f"input_full_text: {input_full_text}")
+    #print(f"output_context_text: {args.output_context_text}")
+    #print(f"output_current_text: {args.output_current_text}")
+    #print(f"output_full_text: {output_full_text}")
 
-    # Tokenize inputs/outputs and compute offset
+    # Remove unnecessary special tokens -> We just cleanup no tokenization occurring yet.
+    print(f"\n\n\nFilter unnecessary special tokens")
     input_context_tokens = None
     if args.input_context_text is not None:
         input_context_tokens = get_filtered_tokens(args.input_context_text, model, args.special_tokens_to_keep)
+        print(f"    Input text: {args.input_context_text}")
+        print(f"    Input context tokens: {args.input_context_text}") 
     if not model.is_encoder_decoder:
         output_full_text = concat_with_sep(input_full_text, output_full_text, args.decoder_input_output_separator)
-        print(f"now output_full_text is : {output_full_text}")
+        # print(f"now output_full_text is : {output_full_text}")
     output_current_tokens = get_filtered_tokens(
         args.output_current_text, model, args.special_tokens_to_keep, is_target=True
     )
@@ -116,12 +126,13 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
 
         #print(f"formatted_input_current_text: {formatted_input_current_text}")
         #print(f"formatted_output_current_text: {formatted_output_current_text}")
-
     # Part 1: Context-sensitive Token Identification (CTI)
-    print(f"model.attribute is called with the following parameters:")
-    print(f"Input texts: {formatted_input_current_text}")
-    print(f"Generated texts: {formatted_output_current_text}")
-    print(f"Contrast targets: {output_full_text}")
+    print(f"\n\n\nCTI")
+    print(f"    model.attribute is called with the following parameters:")
+    print(f"    Input texts: {formatted_input_current_text}")
+    print(f"    Generated texts: {formatted_output_current_text}")
+    print(f"    Contrast targets: {output_full_text}")
+    # print(f"Model is: {model}")
     cti_out = model.attribute(
         input_texts=formatted_input_current_text.rstrip(" "),
         generated_texts=formatted_output_current_text,

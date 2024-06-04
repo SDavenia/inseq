@@ -88,6 +88,7 @@ class HuggingfaceModel(AttributionModel):
             **kwargs: additional arguments for the model and the tokenizer.
         """
         super().__init__(**kwargs)
+        print(f"Initializing huggingface model")
         if self._autoclass is None or self._autoclass not in SUPPORTED_AUTOCLASSES:
             raise ValueError(
                 f"Invalid autoclass {self._autoclass}. Must be one of {[x.__name__ for x in SUPPORTED_AUTOCLASSES]}."
@@ -98,8 +99,9 @@ class HuggingfaceModel(AttributionModel):
             self.model = self._autoclass.from_pretrained(model, **model_kwargs)
         self.model_name = self.model.config.name_or_path
         self.tokenizer_name = tokenizer if isinstance(tokenizer, str) else None
+        #print(f"Tokenizer name is {self.tokenizer_name}") 
         if tokenizer is None:
-            tokenizer = model if isinstance(model, str) else self.model_name
+            tokenizer = model if isinstance(model, str) else self.model_name # Extract the model name. 
             if not tokenizer:
                 raise ValueError(
                     "Unspecified tokenizer for model loaded from scratch. Use explicit identifier as tokenizer=<ID>"

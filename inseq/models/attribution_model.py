@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 class ForwardMethod(Protocol):
+    # Defines a protocol for the forward method, i.e. what a forward method for a model should look like.
     def __call__(
         self,
         batch: Union[DecoderOnlyBatch, EncoderDecoderBatch],
@@ -63,6 +64,7 @@ class ForwardMethod(Protocol):
 
 
 class InputFormatter:
+    # Class defining a series of methods to format inputs for the attribution process.
     @staticmethod
     @abstractmethod
     def prepare_inputs_for_attribution(
@@ -71,6 +73,9 @@ class InputFormatter:
         include_eos_baseline: bool = False,
         skip_special_tokens: bool = False,
     ) -> Union[DecoderOnlyBatch, EncoderDecoderBatch]:
+        """
+        Abstract method that takes as input text or batch of text and returns an object of class DecoderOnlyBatch or EncoderDecoderBatch.
+        """
         raise NotImplementedError()
 
     @staticmethod
@@ -85,6 +90,10 @@ class InputFormatter:
         forward_batch_embeds: bool = True,
         use_baselines: bool = False,
     ) -> tuple[dict[str, Any], tuple[Union[IdsTensor, EmbeddingsTensor, None], ...]]:
+        """
+        Abstract method that takes as input a DecoderOnlyBatch or EncoderDecoderBatch and returns a tuple.
+        """
+
         raise NotImplementedError()
 
     @staticmethod
@@ -191,6 +200,7 @@ class InputFormatter:
                     end_pos=end_pos,
                 )
             )
+        # print(f"adjusted_alignments: {adjusted_alignments}")
         return adjusted_alignments
 
 
@@ -270,6 +280,8 @@ class AttributionModel(ABC, torch.nn.Module):
         override_default_attribution: Optional[bool] = False,
         **kwargs,
     ) -> FeatureAttribution:
+        print(f"Calling get_attribution_method from inseq.models.attribution_model.py")
+        print(f"Method is: {method}")
         # No method present -> missing method error
         if not method:
             if not self.attribution_method:
@@ -378,6 +390,8 @@ class AttributionModel(ABC, torch.nn.Module):
             step-scores, optionally step-wise attributions and general information concerning attributed texts and the
             attribution process.
         """
+        print(f"Calling attribute from inseq.models.attribution_model.py")
+        #### General setup
         if self.is_encoder_decoder and not input_texts:
             raise ValueError("At least one text must be provided to perform attribution.")
         if attribute_target and not self.is_encoder_decoder:
@@ -391,7 +405,9 @@ class AttributionModel(ABC, torch.nn.Module):
         original_device = self.device
         if device is not None:
             self.device = device
+        # Define the attribution method (it is an object of class FeatureAttribution)
         attribution_method = self.get_attribution_method(method, override_default_attribution)
+        # Define the attributed function (it is a callable function)
         attributed_fn = self.get_attributed_fn(attributed_fn)
         if skip_special_tokens:
             kwargs["skip_special_tokens"] = True
@@ -411,19 +427,20 @@ class AttributionModel(ABC, torch.nn.Module):
                     "Step scores are not supported for final step methods since they do not iterate over the full"
                     " sequence. Please remove the step scores and compute them separatly passing method='dummy'."
                 )
-        input_texts, generated_texts = format_input_texts(input_texts, generated_texts)
+        input_texts, generated_texts = format_input_texts(input_texts, generated_texts) # input text is input, generated_text is the force decoded option. Ensures that generated_text starts with input_text
         has_generated_texts = generated_texts is not None
         if not self.is_encoder_decoder:
-            for i in range(len(input_texts)):
-                if not input_texts[i]:
+            for i in range(len(input_texts)):               # Iterate over all input texts.
+                if not input_texts[i]:                      # If input text is empty, set it to the bos token. (If we want to see model generation from nothing)
                     input_texts[i] = self.bos_token
                     if has_generated_texts and not generated_texts[i].startswith(self.bos_token):
                         generated_texts[i] = " ".join([self.bos_token, generated_texts[i]])
-        if batch_size is not None:
+        if batch_size is not None:  # Means we want to work on the list of strings in batches.
             n_batches = len(input_texts) // batch_size + ((len(input_texts) % batch_size) > 0)
             logger.info(f"Splitting input texts into {n_batches} batches of size {batch_size}.")
-        # If constrained decoding is not enabled, output texts are generated from input texts.
+        # If constrained decoding is not enabled, output texts are generated from input texts. (NOT our case, since we always force decode with context-dependent answer).
         if not has_generated_texts or generate_from_target_prefix:
+            # raise ValueError("SHOULD NOT HAVE ENTERED") # Confirmed it does not enter here.
             encoded_input = self.encode(
                 input_texts,
                 return_baseline=True,
@@ -468,6 +485,7 @@ class AttributionModel(ABC, torch.nn.Module):
         if attribution_method.method_name == "lime":
             logger.warning("Batched attribution currently not supported for LIME. Using batch size of 1.")
             batch_size = 1
+        # Actual attribution process 
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
@@ -496,6 +514,7 @@ class AttributionModel(ABC, torch.nn.Module):
         attribution_output.info["generate_from_target_prefix"] = generate_from_target_prefix
         if device and original_device:
             self.device = original_device
+        # Return the output of type FeatureAttributionOutput
         return attribution_output
 
     def embed(self, inputs: Union[TextInput, IdsTensor], as_targets: bool = False, add_special_tokens: bool = True):
