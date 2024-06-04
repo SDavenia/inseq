@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 from ..utils import get_aligned_idx
-from ..utils.typing import EmbeddingsTensor, ExpandedTargetIdsTensor, IdsTensor, OneOrMoreTokenSequences
+from ..utils.typing import EmbeddingsTensor, ExpandedTargetIdsTensor, IdsTensor, OneOrMoreTokenSequences, PixelValuesTensor
 from .data_utils import TensorWrapper
 
 

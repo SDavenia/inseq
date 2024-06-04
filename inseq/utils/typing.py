@@ -77,6 +77,7 @@ OneOrMoreIndicesDict = dict[int, OneOrMoreIndices]
 
 IdsTensor = Int64[torch.Tensor, "batch_size seq_len"]
 TargetIdsTensor = Int64[torch.Tensor, "batch_size"]
+PixelValuesTensor = Float[torch.Tensor, "batch_size n_channels height width"] ## TODO: Aggiungere che questo potenzialmente è batch size n_images n_channels height width.
 ExpandedTargetIdsTensor = Int64[torch.Tensor, "batch_size 1"]
 EmbeddingsTensor = Float[torch.Tensor, "batch_size seq_len embed_size"]
 MultiStepEmbeddingsTensor = Float[Float, "batch_size_x_n_steps seq_len embed_size"]

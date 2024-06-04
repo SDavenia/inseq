@@ -9,6 +9,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
+    AutoModelForVision2Seq,
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizerBase,
@@ -32,18 +33,19 @@ from ..utils.typing import (
 from .attribution_model import AttributionModel
 from .decoder_only import DecoderOnlyAttributionModel
 from .encoder_decoder import EncoderDecoderAttributionModel
+from .visual_language import VLMAttributionModel
 from .model_decorators import unhooked
 
 logger = logging.getLogger(__name__)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Update if other model types are added
-SUPPORTED_AUTOCLASSES = [AutoModelForSeq2SeqLM, AutoModelForCausalLM]
+SUPPORTED_AUTOCLASSES = [AutoModelForSeq2SeqLM, AutoModelForCausalLM, AutoModelForVision2Seq]
 
 
 class HuggingfaceModel(AttributionModel):
     """Model wrapper for any ForCausalLM and ForConditionalGeneration model on the HuggingFace Hub used to enable
-    feature attribution. Corresponds to AutoModelForCausalLM and AutoModelForSeq2SeqLM auto classes.
+    feature attribution. Corresponds to AutoModelForCausalLM and AutoModelForSeq2SeqLM and AutoModelForVision2Seq auto classes.
 
     Attributes:
         _autoclass (:obj:`Type[transformers.AutoModel`]): The HuggingFace model class to use for initialization.
@@ -110,7 +112,11 @@ class HuggingfaceModel(AttributionModel):
         if isinstance(tokenizer, PreTrainedTokenizerBase):
             self.tokenizer = tokenizer
         else:
-            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, **tokenizer_kwargs)
+            # If it is a VLM we need to use AutoProcessor and NOT AutoTokenizer
+            if _autoclass == AutoModelForVision2Seq:
+                self.tokenizer = AutoProcessor.from_pretrained(tokenizer, **tokenizer_kwargs)
+            else:
+                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, **tokenizer_kwargs)
         self.eos_token_id = getattr(self.model.config, "eos_token_id", None)
         pad_token_id = self.model.config.pad_token_id
         if pad_token_id is None:
@@ -154,18 +160,34 @@ class HuggingfaceModel(AttributionModel):
     ) -> "HuggingfaceModel":
         """Loads a HuggingFace model and tokenizer and wraps them in the appropriate AttributionModel."""
         if isinstance(model, str):
-            is_encoder_decoder = AutoConfig.from_pretrained(model, **model_kwargs).is_encoder_decoder
+            # First check if it is a VLM or an LLM
+            # To detect if it is a VLM, we need to check if the model config has vision_config and a text_config
+            if "vision_config" in AutoConfig.from_pretrained(model, **model_kwargs) and "text_config" in AutoConfig.from_pretrained(model, **model_kwargs):
+                is_vlm = True
+                is_encoder_decoder = AutoConfig.from_pretrained(model, **model_kwargs)["text_config"].is_encoder_decoder
+            else:
+            # If it is an LLM check if it is decoder-only or encoder-decoder
+                is_vlm = False
+                is_encoder_decoder = AutoConfig.from_pretrained(model, **model_kwargs).is_encoder_decoder   
         else:
             is_encoder_decoder = model.config.is_encoder_decoder
-        if is_encoder_decoder:
-            return HuggingfaceEncoderDecoderModel(
-                model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs
-            )
+        if not is_vlm:
+            if is_encoder_decoder:
+                return HuggingfaceEncoderDecoderModel(
+                    model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs
+                )
+            else:
+                return HuggingfaceDecoderOnlyModel(
+                    model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs
+                )
         else:
-            return HuggingfaceDecoderOnlyModel(
-                model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs
-            )
-
+            if is_encoder_decoder:
+                raise ValueError("Vision2Seq models are decoder-only models.")
+            else:
+                return HuggingfaceVLMModel(
+                    model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs
+                )    
+        
     @AttributionModel.device.setter
     def device(self, new_device: str) -> None:
         check_device(new_device)
@@ -488,6 +510,52 @@ class HuggingfaceDecoderOnlyModel(HuggingfaceModel, DecoderOnlyAttributionModel)
         model: Union[str, PreTrainedModel],
         attribution_method: Optional[str] = None,
         tokenizer: Union[str, PreTrainedTokenizerBase, None] = None,
+        device: str = None,
+        model_kwargs: Optional[dict[str, Any]] = {},
+        tokenizer_kwargs: Optional[dict[str, Any]] = {},
+        **kwargs,
+    ) -> NoReturn:
+        super().__init__(model, attribution_method, tokenizer, device, model_kwargs, tokenizer_kwargs, **kwargs)
+        self.tokenizer.padding_side = "left"
+        self.tokenizer.truncation_side = "left"
+        if self.pad_token is None:
+            self.pad_token = self.tokenizer.bos_token
+            self.tokenizer.pad_token = self.tokenizer.bos_token
+
+    def configure_embeddings_scale(self):
+        if hasattr(self.model, "embed_scale"):
+            self.embed_scale = self.model.embed_scale
+
+    @staticmethod
+    def get_attentions_dict(output: CausalLMOutput) -> dict[str, MultiLayerMultiUnitScoreTensor]:
+        if output.attentions is None:
+            raise ValueError("Model does not support attribution relying on attention outputs.")
+        return {
+            "decoder_self_attentions": torch.stack(output.attentions, dim=1),
+        }
+
+    @staticmethod
+    def get_hidden_states_dict(output: CausalLMOutput) -> dict[str, MultiLayerEmbeddingsTensor]:
+        return {
+            "decoder_hidden_states": torch.stack(output.hidden_states, dim=1),
+        }
+
+class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
+    """Model wrapper for any Vision2seq model on the HuggingFace Hub used to enable
+    feature attribution. Corresponds to AutoModelForVision2Seq auto classes in HF transformers.
+
+    Attributes:
+        model (::obj:`transformers.AutoModelForVision2Seq`):
+            the model on which attribution is performed.
+    """
+
+    _autoclass = AutoModelForVision2Seq
+
+    def __init__(
+        self,
+        model: Union[str, PreTrainedModel],
+        attribution_method: Optional[str] = None,
+        tokenizer: Union[str, None] = None, # Actually a processor TODO: Before it also supported PreTrainedTokenizerBase, now need to pass a string to obtain the processor.
         device: str = None,
         model_kwargs: Optional[dict[str, Any]] = {},
         tokenizer_kwargs: Optional[dict[str, Any]] = {},

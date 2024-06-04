@@ -59,6 +59,8 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
         model_kwargs=deepcopy(args.model_kwargs),
         tokenizer_kwargs=deepcopy(args.tokenizer_kwargs),
     )
+    print(f"Model type is: {type(model)}")
+    return
     return attribute_context_with_model(args, model)
 
 
@@ -71,6 +73,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         args.generation_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[tgt_lang]
 
     # Prepare input/outputs (generate if necessary)
+    # Prepare input image.
+    image = transformers.image_utils.load_image(args.input_image)
     print(f"Preparing input/output (generate if necessary)")
     print(f"    Calling format_template on the input")
     input_full_text = format_template(args.input_template, args.input_current_text, args.input_context_text)
@@ -90,11 +94,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     print(f"    Calling format template on the output")
     output_full_text = format_template(args.output_template, args.output_current_text, args.output_context_text)
     
-    #print(f"input_full_text: {input_full_text}")
-    #print(f"output_context_text: {args.output_context_text}")
-    #print(f"output_current_text: {args.output_current_text}")
-    #print(f"output_full_text: {output_full_text}")
-
+    print(f"input_full_text: {input_full_text}")
+    print(f"output_context_text: {args.output_context_text}")
+    print(f"output_current_text: {args.output_current_text}")
+    print(f"output_full_text: {output_full_text}")
     # Remove unnecessary special tokens -> We just cleanup no tokenization occurring yet.
     print(f"\n\n\nFilter unnecessary special tokens")
     input_context_tokens = None
