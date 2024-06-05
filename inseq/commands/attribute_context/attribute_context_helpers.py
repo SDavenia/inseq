@@ -1,5 +1,6 @@
 import logging
 import re
+import PIL
 from dataclasses import dataclass, field, fields
 from typing import Any, Optional
 
@@ -106,6 +107,7 @@ def get_filtered_tokens(
 def generate_with_special_tokens(
     model: HuggingfaceModel,
     model_input: str,
+    model_context_image: Optional[PIL.Image.Image],
     special_tokens_to_keep: list[str] = [],
     output_generated_only: bool = True,
     **generation_kwargs,
@@ -113,7 +115,7 @@ def generate_with_special_tokens(
     """Generate text preserving special tokens in ``special_tokens_to_keep``."""
     # Generate outputs, strip special tokens and remove prefix/suffix
     output_gen = model.generate(
-        model_input, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
+        model_input, model_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
     )[0]
     output_tokens = get_filtered_tokens(output_gen, model, special_tokens_to_keep, is_target=True)
     return model.convert_tokens_to_string(output_tokens, skip_special_tokens=False)
@@ -121,7 +123,8 @@ def generate_with_special_tokens(
 
 def generate_model_output(
     model: HuggingfaceModel,
-    model_input: str,
+    model_input: str, # TODO: Maybe modify this to be model_input_text
+    model_context_image: Optional[PIL.Image.Image],
     generation_kwargs: dict[str, Any],
     special_tokens_to_keep: list[str],
     output_template: str,
@@ -129,7 +132,7 @@ def generate_model_output(
     suffix: str,
 ) -> str:
     """Generate the model output, validating the presence of a prefix/suffix and stripping them from the generation."""
-    output_gen = generate_with_special_tokens(model, model_input, special_tokens_to_keep, **generation_kwargs)
+    output_gen = generate_with_special_tokens(model, model_input, model_context_image, special_tokens_to_keep, **generation_kwargs)
     if prefix:
         if not output_gen.startswith(prefix):
             raise ValueError(
@@ -200,6 +203,7 @@ def prepare_outputs(
     output_current_text: Optional[str],
     output_template: str,
     handle_output_context_strategy: str,
+    model_context_image: Optional[PIL.Image],
     generation_kwargs: dict[str, Any] = {},
     special_tokens_to_keep: list[str] = [],
     decoder_input_output_separator: str = " ",
@@ -220,12 +224,12 @@ def prepare_outputs(
     a context and a current portion which need to be separated. ``has_out_ctx`` cannot be True if ``use_out_ctx``
     is False (pre-check in ``__post_init__``).
     """
-    use_out_ctx = "{context}" in output_template
-    has_out_ctx = output_context_text is not None
-    has_out_curr = output_current_text is not None
-    model_input = input_full_text
-    final_current = output_current_text
-    final_context = output_context_text
+    use_out_ctx = "{context}" in output_template    # Whether the output contains the context. For decoder only models this is None -> False
+    has_out_ctx = output_context_text is not None   # Whether the output context is provided. For decoder only models this is None -> False
+    has_out_curr = output_current_text is not None  # Whether the output generation is provided. 
+    model_input = input_full_text                   # Model input
+    final_current = output_current_text             # Model final content i.e. input + generation
+    final_context = output_context_text             # Model final context (only used if input content needs to be transformed to go to output.)
 
     # E.g. output template "A{context}B{current}C" -> prefix = "A", suffix = "C", separator = "B"
     prefix, _ = output_template.split("{context}" if use_out_ctx else "{current}")
@@ -238,7 +242,7 @@ def prepare_outputs(
 
     # Prepend output prefix and context, if available, if current output needs to be generated
     output_current_prefix = prefix
-    if has_out_ctx and not has_out_curr:
+    if has_out_ctx and not has_out_curr: # For encoder-decoder models.
         output_current_prefix = output_current_prefix_template.strip().format(context=output_context_text)
         if model.is_encoder_decoder:
             generation_kwargs["decoder_input_ids"] = model.encode(
@@ -249,12 +253,12 @@ def prepare_outputs(
         else:
             model_input = concat_with_sep(input_full_text, output_current_prefix, decoder_input_output_separator)
             output_current_prefix = model_input
-
     if not model.is_encoder_decoder:
         model_input = concat_with_sep(input_full_text, "", decoder_input_output_separator)
-
+    # Generate model output 
+    print(f"Currently we have that prefix is: {output_current_prefix} while suffix is {suffix}")
     output_gen = generate_model_output(
-        model, model_input, generation_kwargs, special_tokens_to_keep, output_template, output_current_prefix, suffix
+        model, model_input, model_context_image, generation_kwargs, special_tokens_to_keep, output_template, output_current_prefix, suffix
     )
 
     # Settings 3, 4

@@ -1,7 +1,8 @@
 """HuggingFace Seq2seq model."""
 import logging
+import PIL
 from abc import abstractmethod
-from typing import Any, NoReturn, Optional, Union
+from typing import Any, NoReturn, Optional, Union, Tuple
 
 import torch
 from torch import long
@@ -11,6 +12,7 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     AutoModelForVision2Seq,
     AutoTokenizer,
+    AutoProcessor,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
@@ -29,6 +31,7 @@ from ..utils.typing import (
     OneOrMoreTokenSequences,
     TextInput,
     VocabularyEmbeddingsTensor,
+    ImageInput
 )
 from .attribution_model import AttributionModel
 from .decoder_only import DecoderOnlyAttributionModel
@@ -95,13 +98,13 @@ class HuggingfaceModel(AttributionModel):
             raise ValueError(
                 f"Invalid autoclass {self._autoclass}. Must be one of {[x.__name__ for x in SUPPORTED_AUTOCLASSES]}."
             )
+        # If we are passing a model object (else if we are only passing the name.)
         if isinstance(model, PreTrainedModel):
             self.model = model
         else:
             self.model = self._autoclass.from_pretrained(model, **model_kwargs)
         self.model_name = self.model.config.name_or_path
         self.tokenizer_name = tokenizer if isinstance(tokenizer, str) else None
-        #print(f"Tokenizer name is {self.tokenizer_name}") 
         if tokenizer is None:
             tokenizer = model if isinstance(model, str) else self.model_name # Extract the model name. 
             if not tokenizer:
@@ -113,10 +116,16 @@ class HuggingfaceModel(AttributionModel):
             self.tokenizer = tokenizer
         else:
             # If it is a VLM we need to use AutoProcessor and NOT AutoTokenizer
-            if _autoclass == AutoModelForVision2Seq:
-                self.tokenizer = AutoProcessor.from_pretrained(tokenizer, **tokenizer_kwargs)
+            # TODO: UNDERSTAND IF THIS IS THE BEST WAY TO HANDLE THIS.
+            if self._autoclass == AutoModelForVision2Seq:
+                self.is_vlm=True
+                self.processor = AutoProcessor.from_pretrained(tokenizer, **tokenizer_kwargs)
+                self.tokenizer = self.processor.tokenizer
+                # self.image_processor = self.processor.image_processor
             else:
+                self.is_vlm=False
                 self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, **tokenizer_kwargs)
+        # Steps to modify the tokenizer component of the processor or the tokenizer itself.
         self.eos_token_id = getattr(self.model.config, "eos_token_id", None)
         pad_token_id = self.model.config.pad_token_id
         if pad_token_id is None:
@@ -159,14 +168,18 @@ class HuggingfaceModel(AttributionModel):
         **kwargs,
     ) -> "HuggingfaceModel":
         """Loads a HuggingFace model and tokenizer and wraps them in the appropriate AttributionModel."""
+        print(f"Model is: {model}")
+        # print(f"Autoconfig.from_pretrained is: {AutoConfig.from_pretrained(model, **model_kwargs)}")
         if isinstance(model, str):
             # First check if it is a VLM or an LLM
             # To detect if it is a VLM, we need to check if the model config has vision_config and a text_config
-            if "vision_config" in AutoConfig.from_pretrained(model, **model_kwargs) and "text_config" in AutoConfig.from_pretrained(model, **model_kwargs):
+            config = AutoConfig.from_pretrained(model, **model_kwargs)
+            if hasattr(config, 'vision_config') and hasattr(config, 'text_config'):
+                print(f"Config is: {config}")
                 is_vlm = True
-                is_encoder_decoder = AutoConfig.from_pretrained(model, **model_kwargs)["text_config"].is_encoder_decoder
+                is_encoder_decoder = False 
             else:
-            # If it is an LLM check if it is decoder-only or encoder-decoder
+                # If it is an LLM check if it is decoder-only or encoder-decoder
                 is_vlm = False
                 is_encoder_decoder = AutoConfig.from_pretrained(model, **model_kwargs).is_encoder_decoder   
         else:
@@ -567,10 +580,210 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         if self.pad_token is None:
             self.pad_token = self.tokenizer.bos_token
             self.tokenizer.pad_token = self.tokenizer.bos_token
+        print(f"Successully __init__")
 
     def configure_embeddings_scale(self):
         if hasattr(self.model, "embed_scale"):
             self.embed_scale = self.model.embed_scale
+
+    # OVERRIDE PREVIOUSLY DEFINED ENCODE METHOD TO ACCOUNT FOR IMAGES
+    def encode(
+        self,
+        texts: TextInput,
+        images: ImageInput, # defined in typing: need to decide!!
+        as_targets: bool = False, # NOT NEEDED
+        # return_baseline: bool = False,
+        # include_eos_baseline: bool = False,
+        add_bos_token: bool = True,
+        add_special_tokens: bool = True,
+    ) -> BatchEncoding:
+        """Encode one or multiple texts/images, producing a BatchEncoding.
+
+        Args:
+            texts (str or list of str): the texts to tokenize.
+            images: (PIL.Image or list of PIL.Images): the images to process.
+            return_baseline (bool, optional): if True, baseline token ids are returned.
+
+        Returns:
+            BatchEncoding: contains ids, attention masks and pixel values for the images.
+        """
+        if as_targets and not self.is_encoder_decoder:
+            raise ValueError("VLM models should use tokenization as source only.")
+        # TODO: FIND WAYS TO PASS TOKENIZER ARGUMENTS.
+        # Idefics if you do not pass an image tag it raises an error -> Handle it and add it.
+        try:
+            batch = self.processor(
+                text=texts,
+                images=images,
+                #text_target=texts if as_targets else None,
+                #add_special_tokens=add_special_tokens,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            ).to(self.device)
+        # Fix for idefics2
+        except ValueError as e:
+            if isinstance(texts, str):
+                texts = '<image>' + texts
+            elif isinstance(texts, list) and all(isinstance(item, str) for item in texts):
+                texts = ['<image>' + item for item in texts]
+            else:
+                raise ValueError("The input tests should be either a string or a list of strings")
+            batch = self.processor(
+                text=texts,
+                images=images,
+                # text_target=texts if as_targets else None,
+                #add_special_tokens=add_special_tokens,
+                #padding=True,
+                #truncation=True,
+                return_tensors="pt",
+            ).to(self.device)
+
+
+        output_batch_encoding = BatchEncoding(
+            input_ids=batch["input_ids"],
+            input_tokens=[self._convert_ids_to_tokens(x, skip_special_tokens=False) for x in batch["input_ids"]],
+            attention_mask=batch["attention_mask"],
+            #baseline_ids=baseline_ids,
+            pixel_values=batch["pixel_values"]
+        )
+        # ONLY PROBLEM IS IF SOME MODELS USE A DIFFERENT SPECIAL TOKEN THAN IMAGE.
+        # If no special tokens have been added and an error would be raised in generate(like is the case with LLaVA)
+        """if isinstance(texts, str):
+            image_token_id = self.processor.tokenizer.encode('<image>')[0] # int representing the id of <image> token
+            if image_token_id not in batch['input_ids'][0]:
+                print(f"THERE IS NO <image> token")
+                batch['input_ids'] = torch.cat([torch.tensor([image_token_id]), batch['input_ids'][0]])"""
+        # Assume that if the user forgot <image> in one, they forgot it on all of the elements in the batch.
+        image_token_id = self.processor.tokenizer.encode('<image>')[0] # int representing the id of <image> token
+        if isinstance(texts, list) and all(isinstance(item, str) for item in texts):
+            if any(image_token_id not in item_ids for item_ids in batch['input_ids']):
+                to_prepend = torch.full((batch['input_ids'].shape[0], 1), image_token_id)
+                batch['input_ids'] = torch.cat((to_prepend, batch['input_ids']), dim=1)
+
+
+        """baseline_ids = None
+        if return_baseline:
+            if include_eos_baseline:
+                baseline_ids = torch.ones_like(batch["input_ids"]).long() * self.tokenizer.unk_token_id
+            else:
+                baseline_ids_non_eos = batch["input_ids"].ne(self.eos_token_id).long() * self.tokenizer.unk_token_id
+                baseline_ids_eos = batch["input_ids"].eq(self.eos_token_id).long() * self.eos_token_id
+                baseline_ids = baseline_ids_non_eos + baseline_ids_eos"""
+        """# We prepend a BOS token only when tokenizing target texts.
+        if as_targets and self.is_encoder_decoder and add_bos_token:
+            ones_mask = torch.ones((batch["input_ids"].shape[0], 1), device=self.device, dtype=long)
+            batch["attention_mask"] = torch.cat((ones_mask, batch["attention_mask"]), dim=1)
+            bos_ids = ones_mask * self.bos_token_id
+            batch["input_ids"] = torch.cat((bos_ids, batch["input_ids"]), dim=1)
+            #if return_baseline:
+            #    baseline_ids = torch.cat((bos_ids, baseline_ids), dim=1)"""
+        # Check that special <image> tokens have been added to input_ids: this is model dependent and we have to check it.
+
+        return output_batch_encoding
+    
+    @unhooked
+    @batched
+    def generate(
+        self,
+        inputs: Union[BatchEncoding, Tuple[TextInput, ImageInput]],
+        return_generation_output: bool = False,
+        skip_special_tokens: bool = True,
+        output_generated_only: bool = False,
+        **kwargs,
+    ) -> Union[list[str], tuple[list[str], ModelOutput]]:
+        """Wrapper of model.generate to handle tokenization and decoding.
+
+        Args:
+            inputs (Union[BatchEncoding, Tuple[TextInput, ImageInput]]):
+                Inputs to be provided to the model for generation as BatchEncoding object or as a tuple containing object of class TextInput and object of class ImageInput.
+            return_generation_output (`bool`, *optional*, defaults to False):
+                If true, generation outputs are returned alongside the generated text.
+            output_generated_only (`bool`, *optional*, defaults to False):
+                If true, only the generated text is returned. Relevant for decoder-only models that would otherwise return
+                the full input + output.
+
+        Returns:
+            `Union[List[str], Tuple[List[str], ModelOutput]]`: Generated text or a tuple of generated text and
+            generation outputs.
+        """
+        # Check if encode needs to be called
+        if not isinstance(inputs, BatchEncoding):
+            text_inputs, img_inputs =  inputs # Unpack them. 
+            inputs = self.encode(text_inputs, img_inputs, add_special_tokens=not skip_special_tokens)
+        
+        inputs = inputs.to(self.device)
+        generation_out = self.model.generate(
+            input_ids = inputs.input_ids,
+            pixel_values = inputs.pixel_values,
+            return_dict_in_generate=True,
+            **kwargs,
+        )
+        sequences = generation_out.sequences
+        if output_generated_only and not self.is_encoder_decoder:
+            sequences = sequences[:, inputs.input_ids.shape[1] :]
+        texts = self.decode(ids=sequences, skip_special_tokens=skip_special_tokens)
+        if return_generation_output:
+            return texts, generation_out
+        return texts
+    
+
+    def generate(
+        self,
+        inputs: Union[TextInput, BatchEncoding],
+        input_images: Optional[PIL.Image.Image],
+        return_generation_output: bool = False,
+        skip_special_tokens: bool = True,
+        output_generated_only: bool = False,
+        **kwargs,
+    ) -> Union[list[str], tuple[list[str], ModelOutput]]:
+        """Wrapper of model.generate to handle tokenization and decoding.
+
+        Args:
+            inputs (`Union[TextInput, BatchEncoding]`):
+                Inputs to be provided to the model for generation.
+            return_generation_output (`bool`, *optional*, defaults to False):
+                If true, generation outputs are returned alongside the generated text.
+            output_generated_only (`bool`, *optional*, defaults to False):
+                If true, only the generated text is returned. Relevant for decoder-only models that would otherwise return
+                the full input + output.
+
+        Returns:
+            `Union[List[str], Tuple[List[str], ModelOutput]]`: Generated text or a tuple of generated text and
+            generation outputs.
+        """
+        print(f"Calling HFVLModel generate")
+        if isinstance(inputs, str) or (
+            isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
+        ):
+            inputs = self.encode(inputs, input_images, add_special_tokens=not skip_special_tokens)
+            print(f"Encoded inputs ids are: {inputs.input_ids}")
+        inputs = inputs.to(self.device)
+        generation_out = self.model.generate(
+            input_ids = inputs.input_ids,
+            pixel_values = inputs.pixel_values,
+            return_dict_in_generate=True,
+            **kwargs,
+        )
+        sequences = generation_out.sequences
+        if output_generated_only and not self.is_encoder_decoder:
+            sequences = sequences[:, inputs.input_ids.shape[1] :]
+        texts = self.decode(ids=sequences, skip_special_tokens=skip_special_tokens)
+        if return_generation_output:
+            return texts, generation_out
+        return texts
+
+
+    def decode(
+        self,
+        ids: Union[list[int], list[list[int]], IdsTensor],
+        skip_special_tokens: bool = True,
+    ) -> list[str]:
+        return self.tokenizer.batch_decode(
+            ids,
+            skip_special_tokens=skip_special_tokens,
+            clean_up_tokenization_spaces=False,
+        )
 
     @staticmethod
     def get_attentions_dict(output: CausalLMOutput) -> dict[str, MultiLayerMultiUnitScoreTensor]:

@@ -18,12 +18,17 @@ class BatchEncoding(TensorWrapper):
             1 for positions that are valid, 0 for padded positions.
         baseline_ids (torch.Tensor, optional): Batch of reference token ids with shape
             ``[batch_size, longest_seq_length]``. Used for attribution methods requiring a baseline input (e.g. IG).
+        pixel_values (torch.Tensor, optional): Batch of pixel values with shape
+            ``[batch_size, input_channels, height, width]``. Used for Multimodal PECoRe in combination with VLM models.
+            Some models (see Idefics2) require shape ``[batch_size, n_images, input_channels, height, width]``, 
+            where n_images is the number of input images for each textual input.
     """
 
     input_ids: IdsTensor
     attention_mask: IdsTensor
     input_tokens: Optional[OneOrMoreTokenSequences] = None
     baseline_ids: Optional[IdsTensor] = None
+    pixel_values: Optional[PixelValuesTensor] = None
 
     def __len__(self) -> int:
         return len(self.input_tokens)

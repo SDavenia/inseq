@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class VLMInputFormatter(InputFormatter):
     @staticmethod
     def prepare_inputs_for_attribution(
-        attribution_model: "DecoderOnlyAttributionModel",
+        attribution_model: "VLMAttributionModel",
         inputs: FeatureAttributionInput,
         include_eos_baseline: bool = False,
         skip_special_tokens: bool = False,

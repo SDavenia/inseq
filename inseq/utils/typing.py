@@ -1,3 +1,5 @@
+import PIL
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Optional, Union
@@ -8,6 +10,7 @@ from jaxtyping import Float, Float32, Int64
 from transformers import PreTrainedModel
 
 TextInput = Union[str, Sequence[str]]
+ImageInput = Union[PIL.Image.Image, Sequence[PIL.Image.Image]]
 
 if TYPE_CHECKING:
     from inseq.models import AttributionModel

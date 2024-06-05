@@ -59,8 +59,6 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
         model_kwargs=deepcopy(args.model_kwargs),
         tokenizer_kwargs=deepcopy(args.tokenizer_kwargs),
     )
-    print(f"Model type is: {type(model)}")
-    return
     return attribute_context_with_model(args, model)
 
 
@@ -74,9 +72,11 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
 
     # Prepare input/outputs (generate if necessary)
     # Prepare input image.
-    image = transformers.image_utils.load_image(args.input_image)
+    if not args.image:
+        args.image = transformers.image_utils.load_image(args.input_image_path)
     print(f"Preparing input/output (generate if necessary)")
     print(f"    Calling format_template on the input")
+    # input_full_text = input_context_text + input_current_text
     input_full_text = format_template(args.input_template, args.input_current_text, args.input_context_text)
     print(f"    Calling prepare outputs")
     args.output_context_text, args.output_current_text = prepare_outputs(
@@ -87,6 +87,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         output_current_text=args.output_current_text,
         output_template=args.output_template,
         handle_output_context_strategy=args.handle_output_context_strategy,
+        model_context_image = args.image,
         generation_kwargs=deepcopy(args.generation_kwargs),
         special_tokens_to_keep=args.special_tokens_to_keep,
         decoder_input_output_separator=args.decoder_input_output_separator,
@@ -98,6 +99,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     print(f"output_context_text: {args.output_context_text}")
     print(f"output_current_text: {args.output_current_text}")
     print(f"output_full_text: {output_full_text}")
+    raise ValueError("STOP HERE")
     # Remove unnecessary special tokens -> We just cleanup no tokenization occurring yet.
     print(f"\n\n\nFilter unnecessary special tokens")
     input_context_tokens = None

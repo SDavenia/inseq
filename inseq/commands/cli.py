@@ -1,5 +1,6 @@
 """Adapted from https://github.com/huggingface/transformers/blob/main/src/transformers/commands/transformers_cli.py."""
 import sys
+from dotenv import load_dotenv
 
 from ..utils import InseqArgumentParser
 from .attribute import AttributeCommand
@@ -11,11 +12,14 @@ COMMANDS: list[BaseCLICommand] = [AttributeCommand, AttributeDatasetCommand, Att
 
 
 def main():
+    load_dotenv()
+    print(f"Loading environmental variables...")
     print(f"Entering main: ")
     parser = InseqArgumentParser(prog="Inseq CLI tool", usage="inseq <COMMAND> [<ARGS>]")
     command_parser = parser.add_subparsers(title="Inseq CLI command helpers")
 
     for command_type in COMMANDS:
+        print(f"Command type: {command_type}")
         command_type.register_subcommand(command_parser)
     
     # Extract all args from the command line
