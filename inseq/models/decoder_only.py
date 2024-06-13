@@ -175,6 +175,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
             decoder_input_ids=batch.target_ids,
             decoder_attention_mask=batch.target_mask,
             decoder_input_embeds=batch.target_embeds,
+            context_image=None # NOT NONE ONLY FOR VLM MODELS
         )
 
     @staticmethod

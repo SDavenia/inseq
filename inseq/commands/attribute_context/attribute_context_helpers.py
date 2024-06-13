@@ -107,7 +107,7 @@ def get_filtered_tokens(
 def generate_with_special_tokens(
     model: HuggingfaceModel,
     model_input: str,
-    model_context_image: Optional[PIL.Image.Image],
+    input_context_image: Optional[PIL.Image.Image],
     special_tokens_to_keep: list[str] = [],
     output_generated_only: bool = True,
     **generation_kwargs,
@@ -115,7 +115,7 @@ def generate_with_special_tokens(
     """Generate text preserving special tokens in ``special_tokens_to_keep``."""
     # Generate outputs, strip special tokens and remove prefix/suffix
     output_gen = model.generate(
-        model_input, model_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
+        model_input, input_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
     )[0]
     output_tokens = get_filtered_tokens(output_gen, model, special_tokens_to_keep, is_target=True)
     return model.convert_tokens_to_string(output_tokens, skip_special_tokens=False)
@@ -124,7 +124,7 @@ def generate_with_special_tokens(
 def generate_model_output(
     model: HuggingfaceModel,
     model_input: str, # TODO: Maybe modify this to be model_input_text
-    model_context_image: Optional[PIL.Image.Image],
+    input_context_image: Optional[PIL.Image.Image],
     generation_kwargs: dict[str, Any],
     special_tokens_to_keep: list[str],
     output_template: str,
@@ -132,7 +132,7 @@ def generate_model_output(
     suffix: str,
 ) -> str:
     """Generate the model output, validating the presence of a prefix/suffix and stripping them from the generation."""
-    output_gen = generate_with_special_tokens(model, model_input, model_context_image, special_tokens_to_keep, **generation_kwargs)
+    output_gen = generate_with_special_tokens(model, model_input, input_context_image, special_tokens_to_keep, **generation_kwargs)
     if prefix:
         if not output_gen.startswith(prefix):
             raise ValueError(
@@ -203,7 +203,7 @@ def prepare_outputs(
     output_current_text: Optional[str],
     output_template: str,
     handle_output_context_strategy: str,
-    model_context_image: Optional[PIL.Image],
+    input_context_image: Optional[PIL.Image],
     generation_kwargs: dict[str, Any] = {},
     special_tokens_to_keep: list[str] = [],
     decoder_input_output_separator: str = " ",
@@ -257,11 +257,13 @@ def prepare_outputs(
         model_input = concat_with_sep(input_full_text, "", decoder_input_output_separator)
     # Generate model output 
     print(f"Currently we have that prefix is: {output_current_prefix} while suffix is {suffix}")
+    print(f"Model type is: {type(model)}")
     output_gen = generate_model_output(
-        model, model_input, model_context_image, generation_kwargs, special_tokens_to_keep, output_template, output_current_prefix, suffix
+        model, model_input, input_context_image, generation_kwargs, special_tokens_to_keep, output_template, output_current_prefix, suffix
     )
 
     # Settings 3, 4
+    print(f"Output generation is : {output_gen}")
     if (has_out_ctx == use_out_ctx) and not has_out_curr:
         return final_context, output_gen.strip()
 

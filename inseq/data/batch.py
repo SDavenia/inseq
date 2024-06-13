@@ -34,6 +34,13 @@ class BatchEncoding(TensorWrapper):
         return len(self.input_tokens)
 
 
+    def _describe_shapes(self):
+        print(f"Input ids has shape: {self.input_ids.shape}")
+        print(f"Input ids: {self.input_ids}")
+        print(f"Pixel values has shape: {self.pixel_values.shape}")
+
+
+
 @dataclass(eq=False, repr=False)
 class BatchEmbedding(TensorWrapper):
     """Embeddings produced by the embedding process using :meth:`~inseq.models.AttributionModel.embed`.
@@ -43,10 +50,12 @@ class BatchEmbedding(TensorWrapper):
             ``[batch_size, longest_seq_length, embedding_size]`` for each sentence in the batch.
         baseline_embeds (:obj:`torch.Tensor`, optional): Batch of reference token embeddings with shape
             ``[batch_size, longest_seq_length, embedding_size]`` for each sentence in the batch.
+        # black_embeds: Contains the tokens if the passed image was black. Only for VLM models.
     """
 
     input_embeds: Optional[EmbeddingsTensor] = None
     baseline_embeds: Optional[EmbeddingsTensor] = None
+    # black_embeds: Optional[EmbeddingsTensor] = None
 
     def __len__(self) -> Optional[int]:
         if self.input_embeds is not None:
@@ -86,6 +95,11 @@ class Batch(TensorWrapper):
     @property
     def baseline_ids(self) -> Optional[IdsTensor]:
         return self.encoding.baseline_ids
+    
+    @property
+    def pixel_values(self): #TODO DEFINE TYPE
+        return self.encoding.pixel_values
+
 
     @property
     def input_embeds(self) -> Optional[EmbeddingsTensor]:
@@ -94,6 +108,10 @@ class Batch(TensorWrapper):
     @property
     def baseline_embeds(self) -> Optional[EmbeddingsTensor]:
         return self.embedding.baseline_embeds
+    
+    @property
+    def black_embeds(self) -> Optional[EmbeddingsTensor]:
+        return self.embedding.black_embeds
 
     @input_ids.setter
     def input_ids(self, value: IdsTensor):

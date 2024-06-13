@@ -35,6 +35,7 @@ from ..utils.typing import (
     SingleScorePerStepTensor,
     TargetIdsTensor,
     TextInput,
+    ImageInput,
     TextSequences,
     TokenWithId,
     VocabularyEmbeddingsTensor,
@@ -280,8 +281,8 @@ class AttributionModel(ABC, torch.nn.Module):
         override_default_attribution: Optional[bool] = False,
         **kwargs,
     ) -> FeatureAttribution:
-        print(f"Calling get_attribution_method from inseq.models.attribution_model.py")
-        print(f"Method is: {method}")
+        #print(f"Calling get_attribution_method from inseq.models.attribution_model.py")
+        print(f"Attribution Method is: {method}")
         # No method present -> missing method error
         if not method:
             if not self.attribution_method:
@@ -315,6 +316,7 @@ class AttributionModel(ABC, torch.nn.Module):
         self,
         input_texts: TextInput,
         generated_texts: Optional[TextInput] = None,
+        context_image: Optional[ImageInput] = None, # ADDED FOR IMAGE
         method: Optional[str] = None,
         override_default_attribution: Optional[bool] = False,
         attr_pos_start: Optional[int] = None,
@@ -343,6 +345,8 @@ class AttributionModel(ABC, torch.nn.Module):
                 attribution for constrained decoding, which should be interpreted carefully in presence of
                 distributional shifts compared to natural generations (`Vamvas and Sennrich, 2021
                 <https://doi.org/10.18653/v1/2021.blackboxnlp-1.5>`__).
+            context_image(:obj:`PIL.Image.Image` or :obj:`list(PIL.Image.Image)`, `optional`): One or more images to be used 
+                as part of the context for generation of the answer. This should be used only in conjunction with VLMs.
             method (:obj:`str`, `optional`): The identifier associated to the attribution method to use.
                 If not provided, the default attribution method specified when initializing the model will be used.
             override_default_attribution (:obj:`bool`, `optional`): Whether to override the default attribution method
@@ -391,6 +395,7 @@ class AttributionModel(ABC, torch.nn.Module):
             attribution process.
         """
         print(f"Calling attribute from inseq.models.attribution_model.py")
+        # print(f"Attribution pos start is: {attr_pos_start}")
         #### General setup
         if self.is_encoder_decoder and not input_texts:
             raise ValueError("At least one text must be provided to perform attribution.")
@@ -418,6 +423,9 @@ class AttributionModel(ABC, torch.nn.Module):
             default_args=self.formatter.get_step_function_reserved_args(),
             **kwargs,
         )
+        print(f"attribution_args: {attribution_args}")      # Empty
+        print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
+        print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
             pretty_progress = False
@@ -489,6 +497,7 @@ class AttributionModel(ABC, torch.nn.Module):
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
+            # context_image,
             batch_size=batch_size,
             attr_pos_start=attr_pos_start,
             attr_pos_end=attr_pos_end,
@@ -518,6 +527,7 @@ class AttributionModel(ABC, torch.nn.Module):
         return attribution_output
 
     def embed(self, inputs: Union[TextInput, IdsTensor], as_targets: bool = False, add_special_tokens: bool = True):
+        # If encoding has not been performed yet -> Pass encoding
         if isinstance(inputs, str) or (
             isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
         ):

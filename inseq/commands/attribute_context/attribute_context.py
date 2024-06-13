@@ -71,14 +71,17 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         args.generation_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[tgt_lang]
 
     # Prepare input/outputs (generate if necessary)
-    # Prepare input image.
-    if not args.image:
-        args.image = transformers.image_utils.load_image(args.input_image_path)
-    print(f"Preparing input/output (generate if necessary)")
-    print(f"    Calling format_template on the input")
+    # Prepare input image: if model is vlm and image is not passed raised an error.
+    if model.is_vlm:
+        if not args.context_image and not args.context_image_path:
+            raise ValueError("Using a VLM requires an image to be passed as input.")
+        if not args.context_image:
+            args.context_image = transformers.image_utils.load_image(args.context_image_path)
+    #print(f"Preparing input/output (generate if necessary)")
+    #print(f"    Calling format_template on the input")
     # input_full_text = input_context_text + input_current_text
     input_full_text = format_template(args.input_template, args.input_current_text, args.input_context_text)
-    print(f"    Calling prepare outputs")
+    #print(f"    Calling prepare outputs")
     args.output_context_text, args.output_current_text = prepare_outputs(
         model=model,
         input_context_text=args.input_context_text,
@@ -87,19 +90,20 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         output_current_text=args.output_current_text,
         output_template=args.output_template,
         handle_output_context_strategy=args.handle_output_context_strategy,
-        model_context_image = args.image,
+        input_context_image = args.context_image,
         generation_kwargs=deepcopy(args.generation_kwargs),
         special_tokens_to_keep=args.special_tokens_to_keep,
         decoder_input_output_separator=args.decoder_input_output_separator,
     )
-    print(f"    Calling format template on the output")
+    #print(f"    Calling format template on the output")
     output_full_text = format_template(args.output_template, args.output_current_text, args.output_context_text)
     
-    print(f"input_full_text: {input_full_text}")
-    print(f"output_context_text: {args.output_context_text}")
-    print(f"output_current_text: {args.output_current_text}")
-    print(f"output_full_text: {output_full_text}")
-    raise ValueError("STOP HERE")
+    #print(f"input_full_text: {input_full_text}")
+    #print(f"output_context_text: {args.output_context_text}")
+    #print(f"output_current_text: {args.output_current_text}")
+    #print(f"output_full_text: {output_full_text}")
+    # raise ValueError("STOP HERE")
+    
     # Remove unnecessary special tokens -> We just cleanup no tokenization occurring yet.
     print(f"\n\n\nFilter unnecessary special tokens")
     input_context_tokens = None
@@ -129,8 +133,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         formatted_output_current_text = formatted_input_current_text + formatted_output_current_text
 
-        #print(f"formatted_input_current_text: {formatted_input_current_text}")
-        #print(f"formatted_output_current_text: {formatted_output_current_text}")
+    #print(f"formatted_input_current_text: {formatted_input_current_text}")
+    #print(f"formatted_output_current_text: {formatted_output_current_text}")
     # Part 1: Context-sensitive Token Identification (CTI)
     print(f"\n\n\nCTI")
     print(f"    model.attribute is called with the following parameters:")
@@ -141,6 +145,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     cti_out = model.attribute(
         input_texts=formatted_input_current_text.rstrip(" "),
         generated_texts=formatted_output_current_text,
+        context_image = args.context_image, # ADDED FOR IMAGE
         attribute_target=model.is_encoder_decoder,
         step_scores=[args.context_sensitivity_metric],
         contrast_sources=input_full_text if model.is_encoder_decoder else None,

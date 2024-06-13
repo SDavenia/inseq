@@ -1,4 +1,5 @@
 import logging
+import PIL
 from dataclasses import dataclass
 from inspect import signature
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Union
@@ -56,6 +57,7 @@ class StepFunctionBaseArgs:
     decoder_input_embeds: EmbeddingsTensor
     decoder_attention_mask: IdsTensor
     is_attributed_fn: bool
+    context_image: Optional[PIL.Image.Image]
 
 
 @dataclass
@@ -227,21 +229,30 @@ def kl_divergence_fn(
         min_tokens_to_keep (:obj:`int`): Minimum number of tokens to keep with :obj:`top_p` filtering. Defaults to
             :obj:`1`.
     """
+    #print(f"args: {args}")
+    #print(f"contrast_souorces: {contrast_sources}")# None for decoder only
+    print(f"contrast targets: {contrast_targets}") # Text: context + input + generation.
     if not contrast_force_inputs and args.is_attributed_fn:
         raise RuntimeError(
             "Using KL divergence as attribution target might lead to unexpected results, depending on the attribution"
             "method used. Use --contrast_force_inputs in the model.attribute call to proceed."
         )
-    original_logits: torch.Tensor = args.attribution_model.output2logits(args.forward_output)
-    contrast_inputs = _get_contrast_inputs(
+    original_logits: torch.Tensor = args.attribution_model.output2logits(args.forward_output) # Logits for the original output
+    #print(f"Contrast sources: {contrast_sources}") 
+    #print(f"Contrast targets: {contrast_targets}")
+    #raise ValueError("STOP HERE")
+    contrast_inputs = _get_contrast_inputs(     # Batch for contrastive target.
         args=args,
-        contrast_sources=contrast_sources,
+        contrast_sources=contrast_sources,  # None for decoder only models.
         contrast_targets=contrast_targets,
         contrast_targets_alignments=contrast_targets_alignments,
         return_contrastive_target_ids=False,
         return_contrastive_batch=True,
         skip_special_tokens=skip_special_tokens,
     )
+    #print(f"Contrast_inputs:\n\n{contrast_inputs}")
+    # print(f"use_embeddings: {args.attribution_model.is_encoder_decoder}")
+    # raise ValueError("STOP HERE")
     c_forward_output = args.attribution_model.get_forward_output(
         contrast_inputs.batch, use_embeddings=args.attribution_model.is_encoder_decoder
     )

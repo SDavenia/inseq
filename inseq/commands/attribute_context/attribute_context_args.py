@@ -104,14 +104,14 @@ class AttributeContextInputArgs:
         ),
     )
     # Added client arguments input_images_path & input_image_url to allow the user to specify an image. 
-    input_image_path: Optional[str] = cli_arg(
+    context_image_path: Optional[str] = cli_arg(
         default=None,
         help=(
             "The path to the folder containing the image to be used as input context or the url to the image."
             "If specified the model should be a VLM and multimodal PECoRe is used."
         )
     )
-    input_image: Optional[PIL.Image.Image] = cli_arg(
+    context_image: Optional[PIL.Image.Image] = cli_arg(
         default=None,
         help=(
             "The image stored as a numpy array of dimension (height, width, channels). "

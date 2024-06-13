@@ -77,14 +77,24 @@ def _get_contrast_inputs(
     c_tgt_ids = None
     is_enc_dec = args.attribution_model.is_encoder_decoder
     if contrast_targets:
-        c_batch = DecoderOnlyBatch.from_batch(
-            get_batch_from_inputs(
-                attribution_model=args.attribution_model,
-                inputs=contrast_targets,
-                as_targets=is_enc_dec,
-                skip_special_tokens=skip_special_tokens,
-            )
-        ).to(args.decoder_input_ids.device)
+        if args.attribution_model.is_vlm:
+            c_batch = DecoderOnlyBatch.from_batch(
+                get_batch_from_inputs(
+                    attribution_model=args.attribution_model,
+                    inputs=(contrast_targets, args.context_image),
+                    as_targets=is_enc_dec,
+                    skip_special_tokens=skip_special_tokens,
+                )
+            ).to(args.decoder_input_ids.device)
+        else:
+            c_batch = DecoderOnlyBatch.from_batch(
+                get_batch_from_inputs(
+                    attribution_model=args.attribution_model,
+                    inputs=contrast_targets,
+                    as_targets=is_enc_dec,
+                    skip_special_tokens=skip_special_tokens,
+                )
+            ).to(args.decoder_input_ids.device)
         curr_prefix_len = args.decoder_input_ids.size(1)
         c_batch, c_tgt_ids = slice_batch_from_position(c_batch, curr_prefix_len, contrast_targets_alignments)
 

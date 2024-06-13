@@ -26,6 +26,7 @@ from ..utils.typing import (
     StepAttributionTensor,
     TargetIdsTensor,
     TextInput,
+    ImageInput,
     TokenWithId,
 )
 from .aggregation_functions import DEFAULT_ATTRIBUTION_AGGREGATE_DICT
@@ -36,7 +37,7 @@ from .data_utils import TensorWrapper
 if TYPE_CHECKING:
     from ..models import AttributionModel
 
-FeatureAttributionInput = Union[TextInput, BatchEncoding, Batch]
+FeatureAttributionInput = Union[TextInput, ImageInput, BatchEncoding, Batch]
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ def get_batch_from_inputs(
     if isinstance(inputs, Batch):
         batch = inputs
     else:
-        if isinstance(inputs, (str, list)):
+        if isinstance(inputs, (str, list)): # Check if input is a string or list 
             encodings: BatchEncoding = attribution_model.encode(
                 inputs,
                 as_targets=as_targets,
@@ -60,6 +61,17 @@ def get_batch_from_inputs(
                 include_eos_baseline=include_eos_baseline,
                 add_special_tokens=not skip_special_tokens,
             )
+        elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
+            print(f"Entering get_batch_from_inputs for VLMs.")
+            textual_inputs, image_inputs = inputs
+            encodings: BatchEncoding = attribution_model.encode(
+                texts=textual_inputs,
+                images=image_inputs,
+                # add_special_tokens # NOT DEFINED THIS IS ALL TO DOUBLE CHECK
+                # return_baseline=True, NOT DEFINED
+            )
+            # print(f"Encodings HELLO is: {encodings}")
+            #raise ValueError(STOP HERE)
         elif isinstance(inputs, BatchEncoding):
             encodings = inputs
         else:
@@ -67,14 +79,23 @@ def get_batch_from_inputs(
                 f"Error: Found inputs of type {type(inputs)}. "
                 "Inputs must be either a string, a list of strings, a BatchEncoding or a Batch."
             )
-        embeddings = BatchEmbedding(
-            input_embeds=attribution_model.embed(
-                encodings.input_ids, as_targets=as_targets, add_special_tokens=not skip_special_tokens
-            ),
-            baseline_embeds=attribution_model.embed(
-                encodings.baseline_ids, as_targets=as_targets, add_special_tokens=not skip_special_tokens
-            ),
-        )
+        if not attribution_model.is_vlm:
+            embeddings = BatchEmbedding(
+                input_embeds=attribution_model.embed(
+                    encodings.input_ids, as_targets=as_targets, add_special_tokens=not skip_special_tokens
+                ),
+                baseline_embeds=attribution_model.embed(
+                    encodings.baseline_ids, as_targets=as_targets, add_special_tokens=not skip_special_tokens
+                ),
+                
+            )
+        # If we have a vlm it is different cause embed also takes pixel_values.
+        elif attribution_model.is_vlm: 
+            # print(f"Entering the one for VLMs.")
+            embeddings = BatchEmbedding(
+                input_embeds=attribution_model.embed(encodings),
+                # black_embeds=attribution_model.embed(encodings, black_embeds=True)
+            )
         batch = Batch(encodings, embeddings)
     return batch
 
