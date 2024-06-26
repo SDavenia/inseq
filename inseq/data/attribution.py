@@ -50,6 +50,7 @@ def get_batch_from_inputs(
     as_targets: bool = False,
     skip_special_tokens: bool = False,
 ) -> Batch:
+    print(f"Calling get_batch_from_inputs")
     if isinstance(inputs, Batch):
         batch = inputs
     else:
@@ -63,15 +64,16 @@ def get_batch_from_inputs(
             )
         elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
             print(f"Entering get_batch_from_inputs for VLMs.")
-            textual_inputs, image_inputs = inputs
+            textual_inputs, context_images = inputs
             encodings: BatchEncoding = attribution_model.encode(
                 texts=textual_inputs,
-                images=image_inputs,
+                context_images=context_images,
                 # add_special_tokens # NOT DEFINED THIS IS ALL TO DOUBLE CHECK
                 # return_baseline=True, NOT DEFINED
             )
+            # print(f"Encodings now has pixel values: {encodings.pixel_values}")
             # print(f"Encodings HELLO is: {encodings}")
-            #raise ValueError(STOP HERE)
+            # raise ValueError("STOP HERE")
         elif isinstance(inputs, BatchEncoding):
             encodings = inputs
         else:
@@ -92,10 +94,13 @@ def get_batch_from_inputs(
         # If we have a vlm it is different cause embed also takes pixel_values.
         elif attribution_model.is_vlm: 
             # print(f"Entering the one for VLMs.")
+            print(f"Calling embeddings for VLM with encodings having type: {type(encodings)}")
             embeddings = BatchEmbedding(
-                input_embeds=attribution_model.embed(encodings),
+                input_embeds=attribution_model.embed(encodings), # Call directly on the encodings object
                 # black_embeds=attribution_model.embed(encodings, black_embeds=True)
             )
+            #print(f"Embeddings are: {embeddings.input_embeds[0, 5, :10]}")
+            #raise ValueError("STOP HERE")
         batch = Batch(encodings, embeddings)
     return batch
 

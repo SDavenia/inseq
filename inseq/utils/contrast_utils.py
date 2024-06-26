@@ -62,6 +62,7 @@ def _get_contrast_inputs(
     contrast_sources: Optional[FeatureAttributionInput] = None,
     contrast_targets: Optional[FeatureAttributionInput] = None,
     contrast_targets_alignments: Optional[list[list[tuple[int, int]]]] = None,
+    context_image = None,
     return_contrastive_target_ids: bool = False,
     return_contrastive_batch: bool = False,
     skip_special_tokens: bool = False,
@@ -74,6 +75,8 @@ def _get_contrast_inputs(
             contrastive target ids as well as the model output. Defaults to :obj:`False`.
         **forward_kwargs: Additional keyword arguments to be passed to the model's forward pass.
     """
+    print(f"Calling _get_contrast_inputs")
+    # print(f"Inside _get_contrast_inputs: context image is: {context_image}") IT IS HERE
     c_tgt_ids = None
     is_enc_dec = args.attribution_model.is_encoder_decoder
     if contrast_targets:
@@ -81,11 +84,14 @@ def _get_contrast_inputs(
             c_batch = DecoderOnlyBatch.from_batch(
                 get_batch_from_inputs(
                     attribution_model=args.attribution_model,
-                    inputs=(contrast_targets, args.context_image),
+                    inputs=(contrast_targets, context_image),
                     as_targets=is_enc_dec,
                     skip_special_tokens=skip_special_tokens,
                 )
             ).to(args.decoder_input_ids.device)
+            #print(f"c_batch has embeddings: {c_batch.input_embeds[0, 5, :10]}")
+            # raise ValueError("STOP HERE")
+            print(f"Succesfully prepared c_batch: {c_batch}") # Now it is for the whole input
         else:
             c_batch = DecoderOnlyBatch.from_batch(
                 get_batch_from_inputs(
@@ -96,8 +102,7 @@ def _get_contrast_inputs(
                 )
             ).to(args.decoder_input_ids.device)
         curr_prefix_len = args.decoder_input_ids.size(1)
-        c_batch, c_tgt_ids = slice_batch_from_position(c_batch, curr_prefix_len, contrast_targets_alignments)
-
+        c_batch, c_tgt_ids = slice_batch_from_position(c_batch, curr_prefix_len, contrast_targets_alignments) # sliced based on position
         if args.decoder_input_ids.size(0) != c_batch.target_ids.size(0):
             raise ValueError(
                 f"Contrastive batch size ({c_batch.target_ids.size(0)}) must match candidate batch size"
@@ -129,7 +134,8 @@ def _get_contrast_inputs(
             args.encoder_input_ids = c_enc_in.input_ids
             args.encoder_input_embeds = args.attribution_model.embed(args.encoder_input_ids, as_targets=False)
             args.encoder_attention_mask = c_enc_in.attention_mask
-    c_batch = args.attribution_model.formatter.convert_args_to_batch(args)
+
+    #c_batch = args.attribution_model.formatter.convert_args_to_batch(args, pixel_values = c_batch.pixel_values) FOR NOW COMMENTED OUT CAUSE args contains info
     return ContrastInputs(
         batch=c_batch if return_contrastive_batch else None,
         target_ids=c_tgt_ids if return_contrastive_target_ids else None,

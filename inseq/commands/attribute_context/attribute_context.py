@@ -63,7 +63,6 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
 
 
 def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceModel) -> AttributeContextOutput:
-    print(f"Calling attribute_context_with_model from inseq.commands.attribute_context.attribute_context.py")
     # Handle language tag for multilingual models - no need to specify it in generation kwargs
     has_lang_tag = "tgt_lang" in args.tokenizer_kwargs
     if has_lang_tag and "forced_bos_token_id" not in args.generation_kwargs:
@@ -97,20 +96,12 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     )
     #print(f"    Calling format template on the output")
     output_full_text = format_template(args.output_template, args.output_current_text, args.output_context_text)
-    
-    #print(f"input_full_text: {input_full_text}")
-    #print(f"output_context_text: {args.output_context_text}")
-    #print(f"output_current_text: {args.output_current_text}")
-    #print(f"output_full_text: {output_full_text}")
-    # raise ValueError("STOP HERE")
-    
+
     # Remove unnecessary special tokens -> We just cleanup no tokenization occurring yet.
-    print(f"\n\n\nFilter unnecessary special tokens")
     input_context_tokens = None
     if args.input_context_text is not None:
         input_context_tokens = get_filtered_tokens(args.input_context_text, model, args.special_tokens_to_keep)
-        print(f"    Input text: {args.input_context_text}")
-        print(f"    Input context tokens: {args.input_context_text}") 
+
     if not model.is_encoder_decoder:
         output_full_text = concat_with_sep(input_full_text, output_full_text, args.decoder_input_output_separator)
         # print(f"now output_full_text is : {output_full_text}")
@@ -145,14 +136,16 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     cti_out = model.attribute(
         input_texts=formatted_input_current_text.rstrip(" "),
         generated_texts=formatted_output_current_text,
-        context_image = args.context_image, # ADDED FOR IMAGE
+        # context_image=args.context_image, # Added it again as an arg for attribute -> check later.
         attribute_target=model.is_encoder_decoder,
         step_scores=[args.context_sensitivity_metric],
         contrast_sources=input_full_text if model.is_encoder_decoder else None,
         contrast_targets=output_full_text,
         show_progress=False,
         method="dummy",
+        context_image = args.context_image, # Now it is a kwarg specific for VLM models (in the definition)
     )[0]
+    raise ValueError("STOP END OF CTI")
     if args.show_intermediate_outputs:
         cti_out.show(do_aggregation=False)
     start_pos = 1 if has_lang_tag else 0

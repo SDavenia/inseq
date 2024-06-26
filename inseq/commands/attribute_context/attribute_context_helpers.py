@@ -256,14 +256,14 @@ def prepare_outputs(
     if not model.is_encoder_decoder:
         model_input = concat_with_sep(input_full_text, "", decoder_input_output_separator)
     # Generate model output 
-    print(f"Currently we have that prefix is: {output_current_prefix} while suffix is {suffix}")
-    print(f"Model type is: {type(model)}")
+    #print(f"Currently we have that prefix is: {output_current_prefix} while suffix is {suffix}")
+    #print(f"Model type is: {type(model)}")
     output_gen = generate_model_output(
         model, model_input, input_context_image, generation_kwargs, special_tokens_to_keep, output_template, output_current_prefix, suffix
     )
 
     # Settings 3, 4
-    print(f"Output generation is : {output_gen}")
+    #print(f"Output generation is : {output_gen}")
     if (has_out_ctx == use_out_ctx) and not has_out_curr:
         return final_context, output_gen.strip()
 

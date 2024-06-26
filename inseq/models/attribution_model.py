@@ -316,7 +316,7 @@ class AttributionModel(ABC, torch.nn.Module):
         self,
         input_texts: TextInput,
         generated_texts: Optional[TextInput] = None,
-        context_image: Optional[ImageInput] = None, # ADDED FOR IMAGE
+        # context_image: Optional[ImageInput] = None, 
         method: Optional[str] = None,
         override_default_attribution: Optional[bool] = False,
         attr_pos_start: Optional[int] = None,
@@ -416,16 +416,20 @@ class AttributionModel(ABC, torch.nn.Module):
         attributed_fn = self.get_attributed_fn(attributed_fn)
         if skip_special_tokens:
             kwargs["skip_special_tokens"] = True
+        # print(f"get_step_function_reserved_args:\n{self.formatter.get_step_function_reserved_args()}\n\n")
+        # print(f"Step scores args before:\n {step_scores_args}")
         attribution_args, attributed_fn_args, step_scores_args = extract_args(
             attribution_method,
             attributed_fn,
             step_scores,
-            default_args=self.formatter.get_step_function_reserved_args(),
+            default_args=self.formatter.get_step_function_reserved_args(), # Now default_args should include context image for VLMs
             **kwargs,
         )
-        print(f"attribution_args: {attribution_args}")      # Empty
-        print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
-        print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
+        print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
+        # Add context_image to step_scores_args 
+        #print(f"attribution_args: {attribution_args}")      # Empty
+        #print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
+        #print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
             pretty_progress = False
@@ -435,6 +439,7 @@ class AttributionModel(ABC, torch.nn.Module):
                     "Step scores are not supported for final step methods since they do not iterate over the full"
                     " sequence. Please remove the step scores and compute them separatly passing method='dummy'."
                 )
+        
         input_texts, generated_texts = format_input_texts(input_texts, generated_texts) # input text is input, generated_text is the force decoded option. Ensures that generated_text starts with input_text
         has_generated_texts = generated_texts is not None
         if not self.is_encoder_decoder:
@@ -497,7 +502,6 @@ class AttributionModel(ABC, torch.nn.Module):
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
-            # context_image,
             batch_size=batch_size,
             attr_pos_start=attr_pos_start,
             attr_pos_end=attr_pos_end,

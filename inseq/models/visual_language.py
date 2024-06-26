@@ -2,12 +2,13 @@ import logging
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, Union
 
+import PIL
 import torch
 import torchvision.transforms as transforms
 
 
 from ..attr.feat import join_token_ids
-from ..attr.step_functions import StepFunctionDecoderOnlyArgs
+from ..attr.step_functions import StepFunctionVLMArgs
 from ..data import (
     BatchEmbedding,
     BatchEncoding,
@@ -44,12 +45,22 @@ class VLMInputFormatter(InputFormatter):
     ) -> DecoderOnlyBatch:
         """ 
         Prepares the input for attribution, i.e. it prepares a DecoderOnlyBatch object from the input.
+        If input is only text, we add a black pixels image to it.
         This contains:
             - encoding: a BatchEncodingObject (input_ids, attention_mask, input_tokens, baseline_ids, pixel_values)
             - embedding: a BatchEmbeddingObject (input_embeds, baseline_embeds, black_image_embeds).
         """
         print(f"Calling prepare_inputs_for_attributions (VLM Model)")
-        #print(f"Inputs are: {inputs}")
+        #print(f"Before adding black image Inputs are: {inputs}")
+        # If inputs is only a string, add a black image to it.
+        if not isinstance(inputs, tuple):
+            if not isinstance(inputs[0], str):
+                raise ValueError("Inputs should be a string to add a black image to.")
+            print(f"Inputs is:\n{inputs}")
+            print(f"Adding black image as input")
+            black_image = PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
+            # black_image.save("black_image.png")
+            inputs = (inputs, black_image)
         batch = get_batch_from_inputs(
             attribution_model,
             inputs=inputs, # To be called here inputs should be (textual_input, context_image)
@@ -71,7 +82,7 @@ class VLMInputFormatter(InputFormatter):
     # LEFT THE SAME AS DECODER ONLY ARGS: AS WE WILL HAVE THEM WORKING IN THE SAME WAY
     @staticmethod
     def get_step_function_reserved_args() -> list[str]:
-        return [f.name for f in StepFunctionDecoderOnlyArgs.__dataclass_fields__.values()]
+        return [f.name for f in StepFunctionVLMArgs.__dataclass_fields__.values()]
     
     # LEFT THE SAME AS DECODER ONLY ARGS: AS WE WILL HAVE THEM WORKING IN THE SAME WAY
     @staticmethod
@@ -96,6 +107,10 @@ class VLMInputFormatter(InputFormatter):
         print(f"Calling format_attribution_args (decoder only)")
         if attribute_batch_ids:
             inputs = (batch.input_ids,)
+        else:
+            #print(f"format attribution using the embeddings.")
+            inputs = (batch.input_embeds)
+            # print(f"inputs: {batch.input_embeds[0, 5, :10]}")
             # baselines = (batch.baseline_ids,)
         #else:
         #    print(f"Setting black embeds.")
@@ -135,8 +150,8 @@ class VLMInputFormatter(InputFormatter):
         target_ids: ExpandedTargetIdsTensor,
         batch: DecoderOnlyBatch,
         is_attributed_fn: bool = False,
-    ) -> StepFunctionDecoderOnlyArgs:
-        return StepFunctionDecoderOnlyArgs(
+    ) -> StepFunctionVLMArgs:
+        return StepFunctionVLMArgs(
             attribution_model=attribution_model,
             forward_output=forward_output,
             target_ids=target_ids,
@@ -144,26 +159,72 @@ class VLMInputFormatter(InputFormatter):
             decoder_input_ids=batch.target_ids,
             decoder_attention_mask=batch.target_mask,
             decoder_input_embeds=batch.target_embeds,
-            context_image=transforms.ToPILImage(mode='RGB')(batch.encoding.pixel_values[0])
+            context_image=None,
+            # context_image=transforms.ToPILImage(mode='RGB')(batch.encoding.pixel_values[0])
         )
 
-    # LEFT THE SAME AS DECODER ONLY ARGS: AS WE WILL HAVE THEM WORKING IN THE SAME WAY
+    # NEEDS TO BE MODIFIED TO ALSO HAVE IMAGE
     @staticmethod
     def convert_args_to_batch(
-        args: StepFunctionDecoderOnlyArgs = None,
+        args: StepFunctionVLMArgs = None,
         decoder_input_ids: Optional[IdsTensor] = None,
         decoder_attention_mask: Optional[IdsTensor] = None,
         decoder_input_embeds: Optional[EmbeddingsTensor] = None,
+        pixel_values = None, # TODO AGGIUNGI IL TIPO
         **kwargs,
     ) -> DecoderOnlyBatch:
-        print(f"Calling convert_args_to_batch (decoder only)")
-        if args is not None:
-            decoder_input_ids = args.decoder_input_ids
-            decoder_attention_mask = args.decoder_attention_mask
-            decoder_input_embeds = args.decoder_input_embeds
-        encoding = BatchEncoding(decoder_input_ids, decoder_attention_mask)
-        embedding = BatchEmbedding(decoder_input_embeds)
-        return DecoderOnlyBatch(encoding, embedding)
+        raise NotImplementedError("convert_args_to_batch not implemented cause not needed for VLM!")
+    
+    # SAME AS DECODER ONLY
+    @staticmethod
+    def enrich_step_output(
+        attribution_model: "VLMAttributionModel",
+        step_output: FeatureAttributionStepOutput,
+        batch: DecoderOnlyBatch,
+        target_tokens: OneOrMoreTokenSequences,
+        target_ids: TargetIdsTensor,
+        contrast_batch: Optional[DecoderOnlyBatch] = None,
+        contrast_targets_alignments: Optional[list[list[tuple[int, int]]]] = None,
+    ) -> FeatureAttributionStepOutput:
+        """
+        Adds to the step_output object additional information. It is called after each step.
+        In our case it simply adds the prefix and (i.e. input + generated words so far) and the target (i.e. generated token at this step.)
+        """
+
+        r"""Enriches the attribution output with token information, producing the finished
+        :class:`~inseq.data.FeatureAttributionStepOutput` object.
+
+        Args:
+            step_output (:class:`~inseq.data.FeatureAttributionStepOutput`): The output produced
+                by the attribution step, with missing batch information.
+            batch (:class:`~inseq.data.DecoderOnlyBatch`): The batch on which attribution was performed.
+            target_ids (:obj:`torch.Tensor`): Target token ids of size `(batch_size, 1)` corresponding to tokens
+                for which the attribution step was performed.
+
+        Returns:
+            :class:`~inseq.data.FeatureAttributionStepOutput`: The enriched attribution output.
+        """
+        print(f"Calling enrich_step_output (decoder only)")
+        if target_ids.ndim == 0:
+            target_ids = target_ids.unsqueeze(0)
+        step_output.source = None
+        if contrast_batch is not None:
+            contrast_aligned_idx = get_aligned_idx(len(batch.target_tokens[0]), contrast_targets_alignments[0])
+            contrast_target_ids = contrast_batch.target_ids[:, contrast_aligned_idx]
+            step_output.target = join_token_ids(
+                tokens=target_tokens,
+                ids=attribution_model.convert_ids_to_tokens(contrast_target_ids, skip_special_tokens=False),
+                contrast_tokens=attribution_model.convert_ids_to_tokens(
+                    contrast_target_ids[None, ...], skip_special_tokens=False
+                ),
+            )
+            step_output.prefix = join_token_ids(tokens=batch.target_tokens, ids=batch.target_ids.tolist())
+        else:
+            step_output.target = join_token_ids(target_tokens, [[idx] for idx in target_ids.tolist()])
+            step_output.prefix = join_token_ids(batch.target_tokens, batch.target_ids.tolist())
+        return step_output
+
+ 
 
 
 
@@ -182,9 +243,10 @@ class VLMAttributionModel(AttributionModel):
         use_embeddings: bool = True,
         **kwargs,
     ) -> ModelOutput:
-        print(f"Calling forward with use_embeddings: {use_embeddings}")
+        # print(f"Calling forward with use_embeddings: {use_embeddings}")
+        # print(f"To generate output input embeds are:\n{batch.input_embeds[0, 5, :10]}")
         # For VLM we call directly the language model with the specified embeddings
-        return self.model.language_model( # self.model.language_model would be what we want to do here. 
+        return self.model.language_model( 
             input_ids=batch.input_ids if not use_embeddings else None,
             inputs_embeds=batch.input_embeds if use_embeddings else None,
             # Hacky fix for petals' distributed models while awaiting attention_mask support:

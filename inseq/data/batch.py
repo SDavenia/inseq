@@ -110,8 +110,8 @@ class Batch(TensorWrapper):
         return self.embedding.baseline_embeds
     
     @property
-    def black_embeds(self) -> Optional[EmbeddingsTensor]:
-        return self.embedding.black_embeds
+    def input_embeds(self) -> Optional[EmbeddingsTensor]:
+        return self.embedding.input_embeds
 
     @input_ids.setter
     def input_ids(self, value: IdsTensor):

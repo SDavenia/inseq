@@ -12,7 +12,7 @@ from ..data import FeatureAttributionInput
 from ..data.aggregation_functions import DEFAULT_ATTRIBUTION_AGGREGATE_DICT
 from ..utils import extract_signature_args, filter_logits, top_p_logits_mask
 from ..utils.contrast_utils import _get_contrast_inputs, _setup_contrast_args, contrast_fn_docstring
-from ..utils.typing import EmbeddingsTensor, IdsTensor, SingleScorePerStepTensor, TargetIdsTensor
+from ..utils.typing import EmbeddingsTensor, IdsTensor, SingleScorePerStepTensor, TargetIdsTensor, ImageInput
 
 if TYPE_CHECKING:
     from ..models import AttributionModel
@@ -57,7 +57,7 @@ class StepFunctionBaseArgs:
     decoder_input_embeds: EmbeddingsTensor
     decoder_attention_mask: IdsTensor
     is_attributed_fn: bool
-    context_image: Optional[PIL.Image.Image]
+    # context_image: Optional[PIL.Image.Image]
 
 
 @dataclass
@@ -66,6 +66,9 @@ class StepFunctionEncoderDecoderArgs(StepFunctionBaseArgs):
     encoder_input_embeds: EmbeddingsTensor
     encoder_attention_mask: IdsTensor
 
+@dataclass
+class StepFunctionVLMArgs(StepFunctionBaseArgs):
+    context_image: ImageInput
 
 @dataclass
 class StepFunctionDecoderOnlyArgs(StepFunctionBaseArgs):
@@ -210,6 +213,7 @@ def kl_divergence_fn(
     contrast_sources: Optional[FeatureAttributionInput] = None,
     contrast_targets: Optional[FeatureAttributionInput] = None,
     contrast_targets_alignments: Optional[list[list[tuple[int, int]]]] = None,
+    context_image = None, # TODO: SPECIFY TYPE
     top_k: int = 0,
     top_p: float = 1.0,
     min_tokens_to_keep: int = 1,
@@ -229,48 +233,75 @@ def kl_divergence_fn(
         min_tokens_to_keep (:obj:`int`): Minimum number of tokens to keep with :obj:`top_p` filtering. Defaults to
             :obj:`1`.
     """
-    #print(f"args: {args}")
     #print(f"contrast_souorces: {contrast_sources}")# None for decoder only
-    print(f"contrast targets: {contrast_targets}") # Text: context + input + generation.
+    print(f"contrast targets: {contrast_targets}") # Text: context + input + generation. (for unimodal while for VLM input + generation)
     if not contrast_force_inputs and args.is_attributed_fn:
         raise RuntimeError(
             "Using KL divergence as attribution target might lead to unexpected results, depending on the attribution"
             "method used. Use --contrast_force_inputs in the model.attribute call to proceed."
         )
     original_logits: torch.Tensor = args.attribution_model.output2logits(args.forward_output) # Logits for the original output
-    #print(f"Contrast sources: {contrast_sources}") 
-    #print(f"Contrast targets: {contrast_targets}")
-    #raise ValueError("STOP HERE")
+    
+    # Obtain the batch for contrastive inputs, containing the encoding/embedding for the text so far along with the correct image
+    # print(f"Context image is: {context_image}")
+    # print(f"Args is: {args}")
     contrast_inputs = _get_contrast_inputs(     # Batch for contrastive target.
         args=args,
         contrast_sources=contrast_sources,  # None for decoder only models.
         contrast_targets=contrast_targets,
         contrast_targets_alignments=contrast_targets_alignments,
+        context_image=context_image,
         return_contrastive_target_ids=False,
         return_contrastive_batch=True,
         skip_special_tokens=skip_special_tokens,
     )
-    #print(f"Contrast_inputs:\n\n{contrast_inputs}")
-    # print(f"use_embeddings: {args.attribution_model.is_encoder_decoder}")
-    # raise ValueError("STOP HERE")
-    c_forward_output = args.attribution_model.get_forward_output(
-        contrast_inputs.batch, use_embeddings=args.attribution_model.is_encoder_decoder
-    )
+    print(f"Contrast_inputs is:\n{contrast_inputs}")
+
+    #print(f"Contrast input embeddings:\n{contrast_inputs.batch.input_embeds.shape}\n\n")
+    #print(f"Contrastive input embeddings:\n{contrast_inputs.batch.input_embeds[0,5,:10]}")
+    print(f"target id: {args.attribution_model.tokenizer.decode(args.target_ids)}")
+
+    # Not sure why they do not use the embeddings when working with textual models.
+    # For the VLM we apply the modified forward directly starting from the embeddings.
+    if context_image is not None:
+        c_forward_output = args.attribution_model.get_forward_output(
+            contrast_inputs.batch, use_embeddings=True,
+        )
+    else:
+        c_forward_output = args.attribution_model.get_forward_output(
+            contrast_inputs.batch, use_embeddings=args.attribution_model.is_encoder_decoder # NOT SURE WHY HERE THEY USE THE ENCODINGS!
+        )
+
     contrast_logits: torch.Tensor = args.attribution_model.output2logits(c_forward_output).to(original_logits.device)
+    print(f"filtering logits with\n\ttop_p: {top_p}\n\ttop_k: {top_k}\n\tmin_tokens_to_keep: {min_tokens_to_keep}")
     filtered_original_logits, filtered_contrast_logits = filter_logits(
         original_logits=original_logits,
         contrast_logits=contrast_logits,
         top_p=top_p,
         top_k=top_k,
-        min_tokens_to_keep=min_tokens_to_keep,
+        min_tokens_to_keep=min_tokens_to_keep, # By default we keep all of them. 
     )
+    import numpy as np
+    # Save original and contrastive embeddings:
+    np.savetxt('contrast_inputs_embeddings.txt', contrast_inputs.batch.input_embeds[0].detach().numpy())
+
+
+    #np.savetxt('original_logits.txt', original_logits.detach().numpy())
+    #np.savetxt('contrast_logits.txt', contrast_logits.detach().numpy())
+
     filtered_original_logprobs = F.log_softmax(filtered_original_logits, dim=-1)
     filtered_contrast_logprobs = F.log_softmax(filtered_contrast_logits, dim=-1)
+
+    print(f"Target id is: {args.attribution_model.tokenizer.decode(args.target_ids)}")
+    print(f"Original logprob: {filtered_original_logprobs[0, args.target_ids]}")
+    print(f"contrast logprobs: {filtered_contrast_logprobs[0, args.target_ids]}")
+    raise ValueError("STOP HERE")
     kl_divergence = torch.zeros(filtered_original_logprobs.size(0))
     for i in range(filtered_original_logits.size(0)):
         kl_divergence[i] = F.kl_div(
             filtered_contrast_logprobs[i], filtered_original_logprobs[i], reduction="sum", log_target=True
         )
+    print(f"THe obtained kl divergence is: {kl_divergence}")
     return kl_divergence
 
 
@@ -455,7 +486,8 @@ def get_step_scores_args(
 ) -> dict[str, Any]:
     step_scores_args = {}
     for step_fn_id in score_identifiers:
-        step_fn = get_step_function(step_fn_id)
+        print(f"step_fn_id: {step_fn_id}")
+        step_fn = get_step_function(step_fn_id) # kl_divergence
         step_scores_args.update(
             **extract_signature_args(
                 kwargs,
@@ -464,6 +496,7 @@ def get_step_scores_args(
                 return_remaining=False,
             )
         )
+    print(f"get_step_scores_args -> step_scores_args: {step_scores_args}")
     return step_scores_args
 
 

@@ -166,8 +166,8 @@ class HuggingfaceModel(AttributionModel):
                 print(f"Setting `image_token_index` to id corresponding to `<image>`: This may cause issues.")
                 self.image_token_index = self.processor.tokenizer.encode('<image>', add_special_tokens=False)[0]
             self.image_token = self.processor.tokenizer.decode(self.image_token_index, skip_special_tokens=False)
-            print(f"Image token now is: {self.image_token}")
-            print(f"Image token id is: {self.image_token_index}")
+            #print(f"Image token now is: {self.image_token}")
+            #print(f"Image token id is: {self.image_token_index}")
 
         self.embed_scale = 1.0
         self.encoder_int_embeds = None
@@ -603,7 +603,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         if self.pad_token is None:
             self.pad_token = self.tokenizer.bos_token
             self.tokenizer.pad_token = self.tokenizer.bos_token
-        print(f"Successully __init__")
+        # print(f"Successully __init__")
 
     def configure_embeddings_scale(self):
         if hasattr(self.model, "embed_scale"):
@@ -613,7 +613,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
     def encode(
         self,
         texts: TextInput,
-        images: ImageInput, # defined in typing: need to decide!!
+        context_images: ImageInput, # defined in typing: need to decide!!
         as_targets: bool = False, # NOT NEEDED
         return_baseline: bool = False,      # These are not used though -> Left for compatibility
         include_eos_baseline: bool = False, # These are not used though
@@ -630,7 +630,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         Returns:
             BatchEncoding: contains ids, attention masks and pixel values for the images.
         """
-        print(f"Calling encode!")
+        print(f"Calling VLM specific encode!")
         if as_targets and not self.is_encoder_decoder:
             raise ValueError("VLM models should use tokenization as source only.")
         # Idefics if you do not pass an image tag it raises an error -> Handle it and add it.
@@ -639,7 +639,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
             # print(f"Texts is: {texts}")
             batch = self.processor(
                 text=texts,
-                images=images,
+                images=context_images,
                 #text_target=texts if as_targets else None,
                 #add_special_tokens=add_special_tokens,
                 padding=True,
@@ -657,7 +657,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
                 raise ValueError("The input tests should be either a string or a list of strings")
             batch = self.processor(
                 text=texts,
-                images=images,
+                images=context_images,
                 # text_target=texts if as_targets else None,
                 #add_special_tokens=add_special_tokens,
                 padding=True,
@@ -724,13 +724,17 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
               #black_embeds = False
               ) -> EmbeddingsTensor:
         print(f"Calling VLM specific embed.")
+        # print(f"Pixel values when calling embed are: {inputs.pixel_values}")
         # print(f"Inside def embed we have the encodings as: {inputs}")
-        return self.embed_ids(inputs, as_targets, 
+        return self.embed_ids(inputs, 
+                              # as_targets, 
                               #black_embeds=black_embeds
                               )
     
     # OVERRIDE PREVIOUSLY DEFINED EMBED IDS: IN THIS CASE PERFORM MANUALLY STEPS TO CREATE AN INPUT.
-    def embed_ids(self, inputs: BatchEncoding, as_targets: bool = False, 
+    def embed_ids(self, 
+                  inputs: BatchEncoding, 
+                  # as_targets: bool = False, 
                   # black_embeds: bool = False
                   ) -> EmbeddingsTensor:
         """
@@ -745,8 +749,8 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         #else:
         #    #print(f"Inputs is :\n\n{inputs}")
         #    vision_output = self.model.vision_tower(inputs.pixel_values)
+        print(f"When calling embed ids the input pixel values are:\n{inputs.pixel_values}")
         vision_output = self.model.vision_tower(inputs.pixel_values)
-        
         multimodal_projector_output = self.model.multi_modal_projector(vision_output['last_hidden_state'])
         text_embeddings = self.model.get_input_embeddings()(inputs.input_ids)
         merge_output = self.model._merge_input_ids_with_image_features(
@@ -763,6 +767,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         #print(f"The tensor inside embeddings has shape {embeddings[0].shape}")
         #print(f"Type of embeddings: {type(embeddings)}")
         #print(f"Type of embed scale: {type(self.embed_scale)}")
+        # print(f"HEY THEY ARE{(embeddings*self.embed_scale)[0, 5, :10]}")
         return embeddings * self.embed_scale
     
     @unhooked
@@ -770,7 +775,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
     def generate(
         self,
         inputs: Union[TextInput, BatchEncoding],
-        input_images: Optional[PIL.Image.Image],
+        context_images: Optional[PIL.Image.Image],
         return_generation_output: bool = False,
         skip_special_tokens: bool = True,
         output_generated_only: bool = False,
@@ -794,7 +799,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         if isinstance(inputs, str) or (
             isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
         ):
-            inputs = self.encode(inputs, input_images, add_special_tokens=not skip_special_tokens)
+            inputs = self.encode(inputs, context_images, add_special_tokens=not skip_special_tokens)
             # print(f"Encoded inputs ids are: {inputs.input_ids}")
         inputs = inputs.to(self.device)
         # Calls generate method of the original model on which we are performing attribution (like PaliGemma for example).

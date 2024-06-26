@@ -115,18 +115,22 @@ def join_token_ids(
 def extract_args(
     attribution_method: "FeatureAttribution",
     attributed_fn: Callable[..., SingleScorePerStepTensor],
-    step_scores: list[str],
+    step_scores: list[str], # kl_divergence for our test-case.
     default_args: list[str],
     **kwargs,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    # print(f"Entering with default args: {default_args}") Contains the ones in StepFunctionVLMArgs 
+    # print(f"kwargs is: {kwargs}")
     attribution_args = kwargs.pop("attribution_args", {})
     attributed_fn_args = kwargs.pop("attributed_fn_args", {})
     step_scores_args = kwargs.pop("step_scores_args", {})
+
     extra_attribution_args, attribution_unused_args = attribution_method.get_attribution_args(**kwargs)
     extra_attributed_fn_args, attributed_fn_unused_args = extract_signature_args(
         kwargs, attributed_fn, exclude_args=default_args, return_remaining=True
     )
-    extra_step_scores_args = get_step_scores_args(step_scores, kwargs, default_args)
+    extra_step_scores_args = get_step_scores_args(step_scores, kwargs, default_args) # Context image is not added because a default arg. Modify manually
+    # print(f"extra_step: {extra_step_scores_args}")
     step_scores_unused_args = {k: v for k, v in kwargs.items() if k not in extra_step_scores_args}
     unused_args = {
         k: v
@@ -138,6 +142,11 @@ def extract_args(
     attribution_args.update(extra_attribution_args)
     attributed_fn_args.update(extra_attributed_fn_args)
     step_scores_args.update(extra_step_scores_args)
+
+    # Add context_image manually to step_scores_args
+    if kwargs['context_image'] is not None:
+        step_scores_args['context_image'] = kwargs['context_image']
+
     return attribution_args, attributed_fn_args, step_scores_args
 
 
