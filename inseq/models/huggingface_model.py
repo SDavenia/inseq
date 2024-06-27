@@ -749,7 +749,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         #else:
         #    #print(f"Inputs is :\n\n{inputs}")
         #    vision_output = self.model.vision_tower(inputs.pixel_values)
-        print(f"When calling embed ids the input pixel values are:\n{inputs.pixel_values}")
+        # print(f"When calling embed ids the input pixel values are:\n{inputs.pixel_values}")
         vision_output = self.model.vision_tower(inputs.pixel_values)
         multimodal_projector_output = self.model.multi_modal_projector(vision_output['last_hidden_state'])
         text_embeddings = self.model.get_input_embeddings()(inputs.input_ids)

@@ -124,15 +124,23 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         formatted_output_current_text = formatted_input_current_text + formatted_output_current_text
 
+
+    if model.is_vlm:
+        formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
+        formatted_input_current_text = formatted_input_current_text.strip() + '\n'
+        output_full_text = formatted_output_current_text
     #print(f"formatted_input_current_text: {formatted_input_current_text}")
     #print(f"formatted_output_current_text: {formatted_output_current_text}")
     # Part 1: Context-sensitive Token Identification (CTI)
-    print(f"\n\n\nCTI")
-    print(f"    model.attribute is called with the following parameters:")
-    print(f"    Input texts: {formatted_input_current_text}")
-    print(f"    Generated texts: {formatted_output_current_text}")
-    print(f"    Contrast targets: {output_full_text}")
+    print(f"\n\nCTI")
+    print(f"model.attribute is called with the following parameters:")
+    print(f"\tInput texts: {formatted_input_current_text} bla")
+    print(f"\tGenerated texts: {formatted_output_current_text} bla")
+    print(f"\tContrast targets: {output_full_text} bla")
     # print(f"Model is: {model}")
+
+   
+
     cti_out = model.attribute(
         input_texts=formatted_input_current_text.rstrip(" "),
         generated_texts=formatted_output_current_text,

@@ -61,6 +61,7 @@ class VLMInputFormatter(InputFormatter):
             black_image = PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
             # black_image.save("black_image.png")
             inputs = (inputs, black_image)
+        print(f"visual_language.py: Now inputs is: {inputs}")
         batch = get_batch_from_inputs(
             attribution_model,
             inputs=inputs, # To be called here inputs should be (textual_input, context_image)
@@ -68,7 +69,6 @@ class VLMInputFormatter(InputFormatter):
             as_targets=False,
             skip_special_tokens=skip_special_tokens,
         )
-        # print(f"Returning\n{DecoderOnlyBatch.from_batch(batch)}")
         return DecoderOnlyBatch.from_batch(batch)
 
     # LEFT THE SAME AS DECODER ONLY ARGS: AS WE WILL HAVE THEM WORKING IN THE SAME WAY
@@ -243,15 +243,23 @@ class VLMAttributionModel(AttributionModel):
         use_embeddings: bool = True,
         **kwargs,
     ) -> ModelOutput:
+        import torch
         # print(f"Calling forward with use_embeddings: {use_embeddings}")
         # print(f"To generate output input embeds are:\n{batch.input_embeds[0, 5, :10]}")
         # For VLM we call directly the language model with the specified embeddings
+        #print(f"Calling forward with input_embeds: {use_embeddings}") # Should be true
+        #print(f"Batch attention mask has shape: {batch.attention_mask.shape}")
+        # Save embeddings for examination
+        positional_ids = torch.arange(1, batch.attention_mask.shape[-1] + 1).unsqueeze(0)
+        #print(f"Positional_Ids:\n\n{positional_ids}")
         return self.model.language_model( 
             input_ids=batch.input_ids if not use_embeddings else None,
             inputs_embeds=batch.input_embeds if use_embeddings else None,
             # Hacky fix for petals' distributed models while awaiting attention_mask support:
             # https://github.com/bigscience-workshop/petals/pull/206
-            attention_mask=batch.attention_mask if not self.is_distributed else None,
+            #attention_mask=batch.attention_mask if not self.is_distributed else None,
+            attention_mask= torch.ones(torch.Size([1, 1, 261, 261])),
+            position_ids = positional_ids,
             **kwargs,
         )
 

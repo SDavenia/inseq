@@ -259,11 +259,12 @@ class FeatureAttribution(Registry):
         # For unimodal LLMs it contains the encodings + embeddings for the input + generated text
         # Returns a DecoderOnlyBatch with encoding + embeddings (both for image and when image is not provided, i.e. when passing a black image). 
         #  when we call prepare_inputs_for_attribution for vlm with no image, it is assumed that we are passing a black image.
+        print(f"Preparing batch for black image since we only have input: {inputs}")
         batch = self.attribution_model.formatter.prepare_inputs_for_attribution(
             self.attribution_model, inputs, include_eos_baseline, skip_special_tokens
         )
-        print(f"Batch for input is: {batch}\n") # batch for input + generation.
-        # print(f"Batch for input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
+        print(f"Batch for (black) input is: {batch}\n") # batch for input + generation.
+        print(f"Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
         # print(f"Pixel values are: {batch.pixel_values}") # Black image.
         #print(f"Batch ids are: {batch.input_ids}")
 
@@ -278,7 +279,9 @@ class FeatureAttribution(Registry):
         
             n_generated_words = len(target_tokens[0]) - len(sources_tokens[0]) # TODO: Does not support batching.
             attr_pos_start = len(batch.input_ids[0]) - n_generated_words - 1 # First generated token.
-            #print(f"{self.attribution_model.tokenizer.decode(torch.tensor(batch.input_ids[0][attr_pos_start]))}")
+            # print(f"Input ids are: {batch.input_ids}")
+            # print(f"{[self.attribution_model.tokenizer.decode(x) for x in batch.input_ids[0]]}")
+            print(f"Beginning attribution for token:\n\t{self.attribution_model.tokenizer.decode(torch.tensor(batch.input_ids[0][attr_pos_start]))}")
             # encoded_sources =  # Do not think it is necessary not really sure what it is needed for!
            
         # If prepare_and_attribute was called from AttributionModel.attribute,
@@ -558,10 +561,12 @@ class FeatureAttribution(Registry):
             tgt_ids, tgt_mask = batch.get_step_target(step, with_attention=True)
             # Compute step
             # print(f"Batch up to step is:\n{batch[:step]}")
-            print(f"Calling filtered attribute step with:")
-            print(f"attribution_args:\n\t{attribution_args}")
-            print(f"attribution_fn_args:\n\t{attributed_fn_args}")
-            print(f"step_scores_args:\n\t{step_scores_args}")
+            print(f"Batch is: {batch[:step]}")
+            print(f"Batch input ids: {batch.input_ids}")
+            print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.processor.decode(batch.input_ids[0, step])}") 
+            #print(f"attribution_args:\n\t{attribution_args}")
+            #print(f"attribution_fn_args:\n\t{attributed_fn_args}")
+            #print(f"step_scores_args:\n\t{step_scores_args}")
             step_output = self.filtered_attribute_step(
                 batch[:step],                                   # Batch up to current input (no context)
                 target_ids=tgt_ids.unsqueeze(1),                # target ids at current step
@@ -701,7 +706,8 @@ class FeatureAttribution(Registry):
             f"target_attention_mask: {pretty_tensor(target_attention_mask)}"
         )
         logger.debug(f"batch: {batch},\ntarget_ids: {pretty_tensor(target_ids, lpad=4)}")
-                     
+
+        f"batch: {batch},\ntarget_ids: {pretty_tensor(target_ids, lpad=4)}" 
         # Dictionary containing:
         #   inputs: embeddings of the non-contextual generation
         #   additional_forward_args: (input_ids, target_ids): tuple containing id of input so far + id of target token in this step.
@@ -715,6 +721,7 @@ class FeatureAttribution(Registry):
             forward_batch_embeds=self.forward_batch_embeds,
             use_baselines=self.use_baselines,
         )
+        print(f"After calling format_attribution_args batch is:\n{batch}")
         if len(step_scores) > 0 or self.use_attention_weights or self.use_hidden_states:
             with torch.no_grad():
                 # print(f"Generating output without context and using embeddings: {self.forward_batch_embeds}")
@@ -723,7 +730,7 @@ class FeatureAttribution(Registry):
                     use_embeddings=self.forward_batch_embeds,
                     output_attentions=self.use_attention_weights,
                     output_hidden_states=self.use_hidden_states,
-                ) # Type is like model for causal LM
+                )
 
             if self.use_attention_weights:  # DOES NOT ENTER
                 print(f"Att weights")
@@ -758,9 +765,9 @@ class FeatureAttribution(Registry):
             step_fn_extra_args = get_step_scores_args([score], step_scores_args) # step_scores_args contains information on the contrastive inputs, which are passed to step_fn_extra_args.
             print(f"step_fn_extra_args:\n{step_fn_extra_args}")
             import numpy as np
+            # print(f"batch input embeddings are:\n\tinput_embeds[0, 5, :10]{batch.input_embeds[0, 5, :10]}")
             np.savetxt('original_inputs_embeddings.txt', batch.input_embeds[0].detach().numpy())
             step_output.step_scores[score] = get_step_scores(score, step_fn_args, step_fn_extra_args).to("cpu") # HERE IS WHERE the actual score is computed which is why it calls again encode/embed
-            print(f"Step_output.step_scores[score]: {step_output.step_scores[score]}")
         # Reinsert finished sentences
         if target_attention_mask is not None and is_filtered:
             step_output.remap_from_filtered(target_attention_mask, orig_batch, self.is_final_step_method)

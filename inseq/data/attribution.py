@@ -54,7 +54,7 @@ def get_batch_from_inputs(
     if isinstance(inputs, Batch):
         batch = inputs
     else:
-        if isinstance(inputs, (str, list)): # Check if input is a string or list 
+        if isinstance(inputs, (str, list)): # If input is a string or a list we are dealing with unimodal llms -> Prepare encodings normally
             encodings: BatchEncoding = attribution_model.encode(
                 inputs,
                 as_targets=as_targets,
@@ -71,9 +71,11 @@ def get_batch_from_inputs(
                 # add_special_tokens # NOT DEFINED THIS IS ALL TO DOUBLE CHECK
                 # return_baseline=True, NOT DEFINED
             )
+            #print(f"Encodings input ids are:\n\t{encodings.input_ids}")
+            #print(f"When decoded they are: {[attribution_model.processor.decode(x) for x in encodings.input_ids[0]]}")
+            #raise ValueError("STOP HERE")
             # print(f"Encodings now has pixel values: {encodings.pixel_values}")
-            # print(f"Encodings HELLO is: {encodings}")
-            # raise ValueError("STOP HERE")
+
         elif isinstance(inputs, BatchEncoding):
             encodings = inputs
         else:
@@ -81,6 +83,7 @@ def get_batch_from_inputs(
                 f"Error: Found inputs of type {type(inputs)}. "
                 "Inputs must be either a string, a list of strings, a BatchEncoding or a Batch."
             )
+        # If working with unimodal models -> Embed to obtain both input_embeds and baseline_embeds (for integrated gradients).
         if not attribution_model.is_vlm:
             embeddings = BatchEmbedding(
                 input_embeds=attribution_model.embed(
@@ -91,7 +94,7 @@ def get_batch_from_inputs(
                 ),
                 
             )
-        # If we have a vlm it is different cause embed also takes pixel_values.
+        # If we have a vlm it is different cause embed also takes pixel_values and we call it on the encodings object.
         elif attribution_model.is_vlm: 
             # print(f"Entering the one for VLMs.")
             print(f"Calling embeddings for VLM with encodings having type: {type(encodings)}")
@@ -99,8 +102,8 @@ def get_batch_from_inputs(
                 input_embeds=attribution_model.embed(encodings), # Call directly on the encodings object
                 # black_embeds=attribution_model.embed(encodings, black_embeds=True)
             )
-            #print(f"Embeddings are: {embeddings.input_embeds[0, 5, :10]}")
-            #raise ValueError("STOP HERE")
+            print(f"Embeddings are: {embeddings.input_embeds[0, 5, :10]}")
+            # raise ValueError("STOP HERE")
         batch = Batch(encodings, embeddings)
     return batch
 
