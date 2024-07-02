@@ -236,7 +236,6 @@ class VLMAttributionModel(AttributionModel):
     """AttributionModel class for attributing VLM models."""
 
     formatter = VLMInputFormatter
-
     def get_forward_output(
         self,
         batch: DecoderOnlyBatch,
@@ -250,15 +249,23 @@ class VLMAttributionModel(AttributionModel):
         #print(f"Calling forward with input_embeds: {use_embeddings}") # Should be true
         #print(f"Batch attention mask has shape: {batch.attention_mask.shape}")
         # Save embeddings for examination
-        positional_ids = torch.arange(1, batch.attention_mask.shape[-1] + 1).unsqueeze(0)
-        #print(f"Positional_Ids:\n\n{positional_ids}")
+        # TODO: Investigate why but we need to check why we have a matrix of shape [1, 261] for attention while we would need here a [1, 1, 261, 261] one!
+        #       For now obtain a suitable attention mask here!
+        #       Also do the same for the positional_ids
+
+        step = batch.attention_mask.shape[-1]
+        expanded_mask = batch.attention_mask.view(1, 1, step, 1).expand(-1, -1, -1, step)
+        final_mask = expanded_mask * expanded_mask.transpose(2, 3)
+        final_mask = final_mask.float()
+        positional_ids = torch.arange(1, step + 1).unsqueeze(0)
+
         return self.model.language_model( 
             input_ids=batch.input_ids if not use_embeddings else None,
             inputs_embeds=batch.input_embeds if use_embeddings else None,
             # Hacky fix for petals' distributed models while awaiting attention_mask support:
             # https://github.com/bigscience-workshop/petals/pull/206
             #attention_mask=batch.attention_mask if not self.is_distributed else None,
-            attention_mask= torch.ones(torch.Size([1, 1, 261, 261])),
+            attention_mask=final_mask,
             position_ids = positional_ids,
             **kwargs,
         )

@@ -581,7 +581,6 @@ class FeatureAttribution(Registry):
                                                                 #       context_image: PIL.Image.Image
                                                                 #       contrast_targets_alignments: IDs aligned
             print(f"Step output: {step_output}")
-            raise ValueError("STOP HERE")
             # print(f"Step{step}. Step output is: {step_output}")
             # Add batch information to output whixh is:
             #   - prefix: Generation this far (His colleagues asked him how)
@@ -598,7 +597,7 @@ class FeatureAttribution(Registry):
                 contrast_targets_alignments=contrast_targets_alignments,
             )
             print(f"Step output after enrich is: {step_output}")
-            # FROM HERE ONLY DO ADDITIONAL DETAILS!
+            # From here there are only minor details.
             attribution_outputs.append(step_output)
             if pretty_progress and not self.is_final_step_method:
                 tgt_tokens = batch.target_tokens
@@ -647,6 +646,7 @@ class FeatureAttribution(Registry):
             },
         )
         out.info.update(self.attribution_model.info)
+        raise ValueError("STOP HERE")
         return out
 
     def filtered_attribute_step(
@@ -766,13 +766,13 @@ class FeatureAttribution(Registry):
             print(f"step_fn_extra_args:\n{step_fn_extra_args}")
             import numpy as np
             # print(f"batch input embeddings are:\n\tinput_embeds[0, 5, :10]{batch.input_embeds[0, 5, :10]}")
-            np.savetxt('original_inputs_embeddings.txt', batch.input_embeds[0].detach().numpy())
+            #np.savetxt('original_inputs_embeddings.txt', batch.input_embeds[0].detach().numpy())
             step_output.step_scores[score] = get_step_scores(score, step_fn_args, step_fn_extra_args).to("cpu") # HERE IS WHERE the actual score is computed which is why it calls again encode/embed
         # Reinsert finished sentences
         if target_attention_mask is not None and is_filtered:
             step_output.remap_from_filtered(target_attention_mask, orig_batch, self.is_final_step_method)
         step_output = step_output.detach().to("cpu")
-        print(f"After fixes step output is: {step_output}")
+        #print(f"After fixes step output is: {step_output}")
         return step_output
 
     def get_attribution_args(self, **kwargs) -> tuple[dict[str, Any], dict[str, Any]]:

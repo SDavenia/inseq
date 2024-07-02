@@ -292,8 +292,8 @@ def kl_divergence_fn(
         min_tokens_to_keep=min_tokens_to_keep, # By default no filtering applied.
     )
     # Save original and contrastive embeddings:
-    import numpy as np
-    np.savetxt('contrast_inputs_embeddings.txt', contrast_inputs.batch.input_embeds[0].detach().numpy())
+    #import numpy as np
+    #np.savetxt('contrast_inputs_embeddings.txt', contrast_inputs.batch.input_embeds[0].detach().numpy())
 
 
     #np.savetxt('original_logits.txt', original_logits.detach().numpy())
@@ -303,15 +303,15 @@ def kl_divergence_fn(
     filtered_contrast_logprobs = F.log_softmax(filtered_contrast_logits, dim=-1)
 
     print(f"Target id is: {args.attribution_model.tokenizer.decode(args.target_ids)}")
-    print(f"Original logprob: {filtered_original_logprobs[0, args.target_ids]}")
-    print(f"contrast logprobs: {filtered_contrast_logprobs[0, args.target_ids]}")
+    #print(f"Original logprob: {filtered_original_logprobs[0, args.target_ids]}")
+    #print(f"contrast logprobs: {filtered_contrast_logprobs[0, args.target_ids]}")
     kl_divergence = torch.zeros(filtered_original_logprobs.size(0))
     for i in range(filtered_original_logits.size(0)):
         kl_divergence[i] = F.kl_div(
             filtered_contrast_logprobs[i], filtered_original_logprobs[i], reduction="sum", log_target=True
         )
     print(f"THe obtained kl divergence is: {kl_divergence}")
-    raise ValueError("STOP HERE")
+    # raise ValueError("STOP HERE")
     return kl_divergence
 
 
