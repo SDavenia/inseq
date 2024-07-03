@@ -403,6 +403,7 @@ def generate_contextless_output(
     else:
         generation_kwargs["max_new_tokens"] = 1
         generation_input = concat_with_sep(input_current_text, contextual_prefix, decoder_input_output_separator)
+    print(f"Generating with generation_input: {generation_input}")
     contextless_output = generate_with_special_tokens(
         model,
         generation_input,

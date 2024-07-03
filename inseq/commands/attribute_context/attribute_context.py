@@ -217,10 +217,13 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                     formatted_input_current_text, contextless_output_prefix, args.decoder_input_output_separator # input
                 )
             print(f"Args.contextless_output_next_tokens:\n{args.contextless_output_next_tokens}") # Not sure if that is something that to be there the user has to specify manually.
-            contextless_output = get_contextless_output(   
+            print(f"Calling get_contextless_output with:")
+            print(f"formatted_input_current_text: {formatted_input_current_text}")
+            print(f"output_current_tokens: {output_current_tokens}")
+            contextless_output = get_contextless_output(    # Ends up calling model generate with only input (for VLM ENSURE black image is passed here in some way, since probs you are passing the image itself.)
                 model,
-                formatted_input_current_text,
-                output_current_tokens,
+                formatted_input_current_text,    # His colleagues asked him how (input only)
+                output_current_tokens,           # 
                 cti_idx,
                 cti_ranked_tokens,
                 args.contextless_output_next_tokens,
@@ -248,16 +251,14 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         bos_offset = int(model.is_encoder_decoder or output_ctx_tokens[0] == model.bos_token)
         pos_start = output_current_text_offset + cti_idx + bos_offset + int(has_lang_tag)
         print(f"Calling model attribute with:")
-        print(f"Contextual input: {contextual_input}")    # context + input
-        print(f"Contextual output: {contextual_output}")  # context + input + output (generated with context)
-        print(f"Position start: {pos_start}")             # 12: position of the token currently being investigated
-        print(f"Attributed function: {args.attributed_fn}")     # contrast_prob_diff
-        print(f"Attribution method: {args.attribution_method}") # saliency
-        print(f"CCI Kwargs: {cci_kwargs}")                      # contrast_sources, 
-                                                                # contrast_targets (i.e. forced generation)
-                                                                # contrast_force_inputs: True
-        raise ValueError("STOP HERE")
-        
+        print(f"    Contextual input: {contextual_input}")    # context + input
+        print(f"    Contextual output: {contextual_output}")  # context + input + output (generated with context)
+        print(f"    Position start: {pos_start}")             # 12: position of the token currently being investigated
+        print(f"    Attributed function: {args.attributed_fn}")     # contrast_prob_diff
+        print(f"    Attribution method: {args.attribution_method}") # saliency
+        print(f"    CCI Kwargs: {cci_kwargs}")                      # contrast_sources: only for encoder decoder I believe.
+                                                                    # contrast_targets: input + generation up to CTI token (obtained with context).
+                                                                    # contrast_force_inputs: True
         cci_attrib_out = model.attribute(
             contextual_input,
             contextual_output,
