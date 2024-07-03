@@ -50,7 +50,7 @@ def get_batch_from_inputs(
     as_targets: bool = False,
     skip_special_tokens: bool = False,
 ) -> Batch:
-    print(f"Calling get_batch_from_inputs")
+    # print(f"Calling get_batch_from_inputs")
     if isinstance(inputs, Batch):
         batch = inputs
     else:
@@ -63,7 +63,7 @@ def get_batch_from_inputs(
                 add_special_tokens=not skip_special_tokens,
             )
         elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
-            print(f"Entering get_batch_from_inputs for VLMs.")
+            #print(f"Entering get_batch_from_inputs for VLMs.")
             textual_inputs, context_images = inputs
             encodings: BatchEncoding = attribution_model.encode(
                 texts=textual_inputs,
@@ -97,12 +97,12 @@ def get_batch_from_inputs(
         # If we have a vlm it is different cause embed also takes pixel_values and we call it on the encodings object.
         elif attribution_model.is_vlm: 
             # print(f"Entering the one for VLMs.")
-            print(f"Calling embeddings for VLM with encodings having type: {type(encodings)}")
+            # print(f"Calling embeddings for VLM with encodings having type: {type(encodings)}")
             embeddings = BatchEmbedding(
                 input_embeds=attribution_model.embed(encodings), # Call directly on the encodings object
                 # black_embeds=attribution_model.embed(encodings, black_embeds=True)
             )
-            print(f"Embeddings are: {embeddings.input_embeds[0, 5, :10]}")
+            # print(f"Embeddings are: {embeddings.input_embeds[0, 5, :10]}")
             # raise ValueError("STOP HERE")
         batch = Batch(encodings, embeddings)
     return batch

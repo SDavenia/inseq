@@ -333,7 +333,7 @@ class AttributionModel(ABC, torch.nn.Module):
         generate_from_target_prefix: bool = False,
         skip_special_tokens: bool = False,
         generation_args: dict[str, Any] = {},
-        **kwargs,
+        **kwargs, # Includes context_image now!
     ) -> FeatureAttributionOutput:
         """Perform sequential attribution of input texts for every token in generated texts using the specified method.
 
@@ -425,7 +425,7 @@ class AttributionModel(ABC, torch.nn.Module):
             default_args=self.formatter.get_step_function_reserved_args(), # Now default_args should include context image for VLMs
             **kwargs,
         )
-        print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
+        # print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
         # Add context_image to step_scores_args 
         #print(f"attribution_args: {attribution_args}")      # Empty
         #print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
@@ -515,7 +515,7 @@ class AttributionModel(ABC, torch.nn.Module):
             attributed_fn=attributed_fn,
             attribution_args=attribution_args,
             attributed_fn_args=attributed_fn_args,
-            step_scores_args=step_scores_args,
+            step_scores_args=step_scores_args,  # context_image should be included here.
         )
         attribution_output = merge_attributions(attribution_outputs)
         attribution_output.info["input_texts"] = input_texts

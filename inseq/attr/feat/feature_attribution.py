@@ -236,6 +236,8 @@ class FeatureAttribution(Registry):
         #print(f"Targets: {targets}") # For textual: input + generation
         #print(f"Context image: {context_image}")
 
+        # PREPARE BATCH: 
+        # For CTI this means preparing the non-contextual one.
         if not self.attribution_model.is_vlm:
             inputs = (sources, targets)
             # For text LLMs: Used to determine the appropriate attr_pos start
@@ -250,7 +252,9 @@ class FeatureAttribution(Registry):
                 if attr_pos_start is None or attr_pos_start < encoded_sources.input_ids.shape[1]:
                     attr_pos_start = encoded_sources.input_ids.shape[1]
                 #print(f"Attr pos start is: {attr_pos_start}")
-        # If model is a vlm -> Leave attr_pos_start to be determined later and set inputs to only the textual target.
+        # If model is a vlm:
+        #  Leave attr_pos_start to be determined later 
+        #  Set inputs to only the textual target.
         elif self.attribution_model.is_vlm:
             inputs = targets # Contains textual input only (since we want generation with black image.)
             # print(f"Preparing inputs for vlm only with text:\n{inputs}\n")
@@ -259,12 +263,13 @@ class FeatureAttribution(Registry):
         # For unimodal LLMs it contains the encodings + embeddings for the input + generated text
         # Returns a DecoderOnlyBatch with encoding + embeddings (both for image and when image is not provided, i.e. when passing a black image). 
         #  when we call prepare_inputs_for_attribution for vlm with no image, it is assumed that we are passing a black image.
-        print(f"Preparing batch for black image since we only have input: {inputs}")
+        
+        #print(f"Preparing batch for black image since we only have input: {inputs}")
         batch = self.attribution_model.formatter.prepare_inputs_for_attribution(
             self.attribution_model, inputs, include_eos_baseline, skip_special_tokens
         )
-        print(f"Batch for (black) input is: {batch}\n") # batch for input + generation.
-        print(f"Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
+        #print(f"Batch for (black) input is: {batch}\n") # batch for input + generation.
+        #print(f"Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
         # print(f"Pixel values are: {batch.pixel_values}") # Black image.
         #print(f"Batch ids are: {batch.input_ids}")
 
@@ -281,7 +286,7 @@ class FeatureAttribution(Registry):
             attr_pos_start = len(batch.input_ids[0]) - n_generated_words - 1 # First generated token.
             # print(f"Input ids are: {batch.input_ids}")
             # print(f"{[self.attribution_model.tokenizer.decode(x) for x in batch.input_ids[0]]}")
-            print(f"Beginning attribution for token:\n\t{self.attribution_model.tokenizer.decode(torch.tensor(batch.input_ids[0][attr_pos_start]))}")
+            # print(f"First token for attribution is:\n\t{self.attribution_model.tokenizer.decode(torch.tensor(batch.input_ids[0][attr_pos_start]))}")
             # encoded_sources =  # Do not think it is necessary not really sure what it is needed for!
            
         # If prepare_and_attribute was called from AttributionModel.attribute,
@@ -380,7 +385,7 @@ class FeatureAttribution(Registry):
             raise ValueError("contrast_targets_alignments requires contrast_targets to be specified.")
         contrast_targets = [contrast_targets] if isinstance(contrast_targets, str) else contrast_targets
         context_image = step_scores_args.get("context_image", None) # Extract context image
-        print(f"Retrieved context_image: {context_image}")
+        # print(f"Retrieved context_image: {context_image}")
         if contrast_targets is not None:
             as_targets = self.attribution_model.is_encoder_decoder
             # If we are working with a VLM we also need image 
@@ -466,7 +471,7 @@ class FeatureAttribution(Registry):
                 extra information regarding the attribution parameters.
         """
         # print(f"Attribution pos start is: {attr_pos_start}")
-        # print(f"Calling attribute from inseq/attr/feat/feature_attribution.py")
+        
         # Batch contains the input encodings/embeddings for input_texts and generated_texts.
         if self.attribute_batch_ids and not self.forward_batch_embeds and attribute_target:
             raise ValueError(
@@ -491,7 +496,7 @@ class FeatureAttribution(Registry):
         # - contrast_batch: Contains the batch corresponding to (context + input + generation )
         # - contrast_targets_alignments: Contains the alignments between the non-contextual and contextual generation.
         #       For PaliGemma for now these will be the same as the only thing that changes is that we have a black image instead of a coloured one.
-        # print(f"step_scores_args: {step_scores_args}") # Contains contrastive input
+        # print(f"step_scores_args: {step_scores_args}") # Contains contrastive input including image
         (
             contrast_batch,                 # For unimodal LLMs: Contains context + input + generation.
                                             # For VLM: Contains image + input + generation
@@ -509,9 +514,9 @@ class FeatureAttribution(Registry):
             skip_special_tokens,
             # context_image_pixels=batch.pixel_values
         )
-        print(f"batch:\n{batch}")
+        #print(f"batch:\n{batch}")
         #print(f"Pixels:\n{batch.pixel_values}")
-        print(f"contrast batch:\n{contrast_batch}")
+        #print(f"contrast batch:\n{contrast_batch}")
         #print(f"Pixels:\n{contrast_batch.pixel_values}")
 
         #print(f"Attributed_fn_args becomes:\n{attributed_fn_args}\n\n") # Contains info on alignments and contrast targets (i.e. context + input + generation)
@@ -561,9 +566,9 @@ class FeatureAttribution(Registry):
             tgt_ids, tgt_mask = batch.get_step_target(step, with_attention=True)
             # Compute step
             # print(f"Batch up to step is:\n{batch[:step]}")
-            print(f"Batch is: {batch[:step]}")
-            print(f"Batch input ids: {batch.input_ids}")
-            print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.processor.decode(batch.input_ids[0, step])}") 
+            #print(f"Batch is: {batch[:step]}")
+            #print(f"Batch input ids: {batch.input_ids}")
+            #print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.processor.decode(batch.input_ids[0, step])}") 
             #print(f"attribution_args:\n\t{attribution_args}")
             #print(f"attribution_fn_args:\n\t{attributed_fn_args}")
             #print(f"step_scores_args:\n\t{step_scores_args}")
@@ -580,12 +585,12 @@ class FeatureAttribution(Registry):
                 )                                               #       contrast_targets: input + generation
                                                                 #       context_image: PIL.Image.Image
                                                                 #       contrast_targets_alignments: IDs aligned
-            print(f"Step output: {step_output}")
+            #print(f"Step output: {step_output}")
             # print(f"Step{step}. Step output is: {step_output}")
             # Add batch information to output whixh is:
             #   - prefix: Generation this far (His colleagues asked him how)
             #   - target: Target for attribution
-            print(f"Step output before enrich is: {step_output}")
+            #print(f"Step output before enrich is: {step_output}")
             print(f"Target token: {self.attribution_model.convert_ids_to_tokens(tgt_ids.unsqueeze(1), skip_special_tokens=False),}") # Should contain target token!
             step_output = self.attribution_model.formatter.enrich_step_output(
                 self.attribution_model,
@@ -596,7 +601,7 @@ class FeatureAttribution(Registry):
                 contrast_batch=contrast_batch,
                 contrast_targets_alignments=contrast_targets_alignments,
             )
-            print(f"Step output after enrich is: {step_output}")
+            # print(f"Step output after enrich is: {step_output}")
             # From here there are only minor details.
             attribution_outputs.append(step_output)
             if pretty_progress and not self.is_final_step_method:
@@ -646,7 +651,6 @@ class FeatureAttribution(Registry):
             },
         )
         out.info.update(self.attribution_model.info)
-        raise ValueError("STOP HERE")
         return out
 
     def filtered_attribute_step(
@@ -721,7 +725,7 @@ class FeatureAttribution(Registry):
             forward_batch_embeds=self.forward_batch_embeds,
             use_baselines=self.use_baselines,
         )
-        print(f"After calling format_attribution_args batch is:\n{batch}")
+        # print(f"After calling format_attribution_args batch is:\n{batch}")
         if len(step_scores) > 0 or self.use_attention_weights or self.use_hidden_states:
             with torch.no_grad():
                 # print(f"Generating output without context and using embeddings: {self.forward_batch_embeds}")
@@ -742,7 +746,7 @@ class FeatureAttribution(Registry):
                 attribution_args = {**attribution_args, **hidden_states_dict}
         
         # Perform attribution step
-        print(f"Calling attribute_step")
+        # print(f"Calling attribute_step")
         step_output = self.attribute_step( # Nothing when doing dummy.
             attribute_main_args,
             attribution_args,
@@ -763,8 +767,8 @@ class FeatureAttribution(Registry):
             #print(f"step_fn_args:\n{step_fn_args}") TROPPO GRANDE NON LO STAMPRE
    
             step_fn_extra_args = get_step_scores_args([score], step_scores_args) # step_scores_args contains information on the contrastive inputs, which are passed to step_fn_extra_args.
-            print(f"step_fn_extra_args:\n{step_fn_extra_args}")
-            import numpy as np
+            #print(f"step_fn_extra_args:\n{step_fn_extra_args}")
+            #import numpy as np
             # print(f"batch input embeddings are:\n\tinput_embeds[0, 5, :10]{batch.input_embeds[0, 5, :10]}")
             #np.savetxt('original_inputs_embeddings.txt', batch.input_embeds[0].detach().numpy())
             step_output.step_scores[score] = get_step_scores(score, step_fn_args, step_fn_extra_args).to("cpu") # HERE IS WHERE the actual score is computed which is why it calls again encode/embed
@@ -845,7 +849,7 @@ class DummyAttribution(FeatureAttribution):
     def attribute_step(
         self, attribute_fn_main_args: dict[str, Any], attribution_args: dict[str, Any] = {}
     ) -> FeatureAttributionStepOutput:
-        print(f"Calling dummy attribution step from inseq/attr/feat/feature_attribution.py")
+        # print(f"Calling dummy attribution step from inseq/attr/feat/feature_attribution.py")
         return FeatureAttributionStepOutput(
             source_attributions=None,
             target_attributions=None,

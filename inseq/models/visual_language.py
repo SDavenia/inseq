@@ -50,18 +50,18 @@ class VLMInputFormatter(InputFormatter):
             - encoding: a BatchEncodingObject (input_ids, attention_mask, input_tokens, baseline_ids, pixel_values)
             - embedding: a BatchEmbeddingObject (input_embeds, baseline_embeds, black_image_embeds).
         """
-        print(f"Calling prepare_inputs_for_attributions (VLM Model)")
+        #print(f"Calling prepare_inputs_for_attributions (VLM Model)")
         #print(f"Before adding black image Inputs are: {inputs}")
         # If inputs is only a string, add a black image to it.
         if not isinstance(inputs, tuple):
             if not isinstance(inputs[0], str):
                 raise ValueError("Inputs should be a string to add a black image to.")
-            print(f"Inputs is:\n{inputs}")
-            print(f"Adding black image as input")
+            #print(f"Inputs is:\n{inputs}")
+            #print(f"Adding black image as input")
             black_image = PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
             # black_image.save("black_image.png")
             inputs = (inputs, black_image)
-        print(f"visual_language.py: Now inputs is: {inputs}")
+        #print(f"visual_language.py: Now inputs is: {inputs}")
         batch = get_batch_from_inputs(
             attribution_model,
             inputs=inputs, # To be called here inputs should be (textual_input, context_image)
@@ -104,7 +104,7 @@ class VLMInputFormatter(InputFormatter):
                 - input_ids of the input + generated tokens so far
                 - target_ids: the target token id (i.e. the token that was force generated in this step)
         """
-        print(f"Calling format_attribution_args (decoder only)")
+        # print(f"Calling format_attribution_args (decoder only)")
         if attribute_batch_ids:
             inputs = (batch.input_ids,)
         else:
@@ -204,7 +204,7 @@ class VLMInputFormatter(InputFormatter):
         Returns:
             :class:`~inseq.data.FeatureAttributionStepOutput`: The enriched attribution output.
         """
-        print(f"Calling enrich_step_output (decoder only)")
+        # print(f"Calling enrich_step_output (decoder only)")
         if target_ids.ndim == 0:
             target_ids = target_ids.unsqueeze(0)
         step_output.source = None

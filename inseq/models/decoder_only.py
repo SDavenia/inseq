@@ -47,8 +47,8 @@ class DecoderOnlyInputFormatter(InputFormatter):
             - encoding: a BatchEncodingObject (input_ids, attention_mask, input_tokens, baseline_ids)
             - embedding: a BatchEmbeddingObject (input_embeds, baseline_embeds)
         """
-        print(f"Calling prepare_inputs_for_attributions (decoder only)")
-        print(f"Inputs are: {inputs}")
+        #print(f"Calling prepare_inputs_for_attributions (decoder only)")
+        #print(f"Inputs are: {inputs}")
         batch = get_batch_from_inputs(
             attribution_model,
             inputs=inputs,
@@ -56,7 +56,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
             as_targets=False,
             skip_special_tokens=skip_special_tokens,
         )
-        print(f"Returning\n{DecoderOnlyBatch.from_batch(batch)}")
+        # print(f"Returning\n{DecoderOnlyBatch.from_batch(batch)}")
         return DecoderOnlyBatch.from_batch(batch)
 
     @staticmethod
@@ -78,7 +78,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
                 - input_ids of the input + generated tokens so far
                 - target_ids: the target token id (i.e. the token that was force generated in this step)
         """
-        print(f"Calling format_attribution_args (decoder only)")
+        # print(f"Calling format_attribution_args (decoder only)")
         if attribute_batch_ids:
             inputs = (batch.input_ids,)
             baselines = (batch.baseline_ids,)
@@ -139,7 +139,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
         Returns:
             :class:`~inseq.data.FeatureAttributionStepOutput`: The enriched attribution output.
         """
-        print(f"Calling enrich_step_output (decoder only)")
+        # print(f"Calling enrich_step_output (decoder only)")
         if target_ids.ndim == 0:
             target_ids = target_ids.unsqueeze(0)
         step_output.source = None
@@ -186,7 +186,7 @@ class DecoderOnlyInputFormatter(InputFormatter):
         decoder_input_embeds: Optional[EmbeddingsTensor] = None,
         **kwargs,
     ) -> DecoderOnlyBatch:
-        print(f"Calling convert_args_to_batch (decoder only)")
+        # print(f"Calling convert_args_to_batch (decoder only)")
         if args is not None:
             decoder_input_ids = args.decoder_input_ids
             decoder_attention_mask = args.decoder_attention_mask

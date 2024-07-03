@@ -75,7 +75,7 @@ def _get_contrast_inputs(
             contrastive target ids as well as the model output. Defaults to :obj:`False`.
         **forward_kwargs: Additional keyword arguments to be passed to the model's forward pass.
     """
-    print(f"Calling _get_contrast_inputs")
+    # print(f"Calling _get_contrast_inputs")
     # print(f"Inside _get_contrast_inputs: context image is: {context_image}") IT IS HERE
     c_tgt_ids = None
     is_enc_dec = args.attribution_model.is_encoder_decoder

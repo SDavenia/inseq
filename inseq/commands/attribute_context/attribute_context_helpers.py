@@ -367,6 +367,7 @@ def get_contextless_output(
         contextless_output_tokens = output_current_tokens[:cti_idx] + [next_ctxless_token]
         contextless_output = model.convert_tokens_to_string(contextless_output_tokens, skip_special_tokens=False)
     else:
+        print(f"Generate contextless output")
         contextless_output = generate_contextless_output(
             model,
             input_current_text,

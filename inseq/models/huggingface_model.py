@@ -94,7 +94,7 @@ class HuggingfaceModel(AttributionModel):
             **kwargs: additional arguments for the model and the tokenizer.
         """
         super().__init__(**kwargs)
-        print(f"Initializing huggingface model")
+        # print(f"Initializing huggingface model")
         if self._autoclass is None or self._autoclass not in SUPPORTED_AUTOCLASSES:
             raise ValueError(
                 f"Invalid autoclass {self._autoclass}. Must be one of {[x.__name__ for x in SUPPORTED_AUTOCLASSES]}."
@@ -163,7 +163,7 @@ class HuggingfaceModel(AttributionModel):
             self.image_token_index = self.model.config.image_token_index if self.model.config.image_token_index else None
             if self.image_token_index is None:
                 logger.info(f"Setting `image_token_index` to id corresponding to `<image>`: This may cause issues.")
-                print(f"Setting `image_token_index` to id corresponding to `<image>`: This may cause issues.")
+                # print(f"Setting `image_token_index` to id corresponding to `<image>`: This may cause issues.")
                 self.image_token_index = self.processor.tokenizer.encode('<image>', add_special_tokens=False)[0]
             self.image_token = self.processor.tokenizer.decode(self.image_token_index, skip_special_tokens=False)
             #print(f"Image token now is: {self.image_token}")
@@ -190,7 +190,7 @@ class HuggingfaceModel(AttributionModel):
         **kwargs,
     ) -> "HuggingfaceModel":
         """Loads a HuggingFace model and tokenizer and wraps them in the appropriate AttributionModel."""
-        print(f"Model is: {model}")
+        # print(f"Model is: {model}")
         # print(f"Autoconfig.from_pretrained is: {AutoConfig.from_pretrained(model, **model_kwargs)}")
         if isinstance(model, str):
             # First check if it is a VLM or an LLM
@@ -630,7 +630,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         Returns:
             BatchEncoding: contains ids, attention masks and pixel values for the images.
         """
-        print(f"Calling VLM specific encode!")
+        # print(f"Calling VLM specific encode!")
         if as_targets and not self.is_encoder_decoder:
             raise ValueError("VLM models should use tokenization as source only.")
         # Idefics if you do not pass an image tag it raises an error -> Handle it and add it.
@@ -648,7 +648,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
             ).to(self.device)
         # Fix for idefics2
         except ValueError as e:
-            print(f"Entering fix for idefics2")
+            # print(f"Entering fix for idefics2")
             if isinstance(texts, str): # If input is just a string
                 texts = self.image_token + texts
             elif isinstance(texts, list) and all(isinstance(item, str) for item in texts): # If input is a list of strings.
@@ -673,14 +673,14 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         
         if any(self.image_token_index not in item_ids for item_ids in batch['input_ids']):
             if isinstance(texts, str):
-                print(f"Entering fix for LLaVa2")
+                # print(f"Entering fix for LLaVa2")
                 # Add <image> token id AT THE END OF batch encodings.
                 to_prepend_ids = torch.full((batch['input_ids'].shape[0], 1), self.image_token_index, dtype=batch['input_ids'].dtype).to(self.device)
                 batch['input_ids'] = torch.cat((batch['input_ids'], to_prepend_ids), dim=1)
                 # Add one column of attentions for the added token. 
                 to_add_attention = torch.ones_like(to_prepend_ids, dtype=batch['attention_mask'].dtype).to(self.device)
                 batch['attention_mask'] = torch.cat((batch['attention_mask'], to_add_attention), dim=1)
-                print(f"Modified batch input ids to be: {batch['input_ids']}")            
+                # print(f"Modified batch input ids to be: {batch['input_ids']}")            
             if isinstance(texts, list) and all(isinstance(item, str) for item in texts):
                 raise NotImplementedError("Not implemented for batched input yet.")
                 # In teoria così è uguale ma non sono sicuro funga
@@ -723,7 +723,7 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
               as_targets: bool = False, 
               #black_embeds = False
               ) -> EmbeddingsTensor:
-        print(f"Calling VLM specific embed.")
+        # print(f"Calling VLM specific embed.")
         # print(f"Pixel values when calling embed are: {inputs.pixel_values}")
         # print(f"Inside def embed we have the encodings as: {inputs}")
         return self.embed_ids(inputs, 
