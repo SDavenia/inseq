@@ -94,6 +94,8 @@ class GradientAttributionRegistry(FeatureAttribution, Registry):
         source_attributions, target_attributions = get_source_target_attributions(
             attr, self.attribution_model.is_encoder_decoder
         )
+        #print(f"Type of target attribution: {type(target_attributions)}") torch.tensor
+        #print(f"Shape of target attribution: {target_attributions.shape}") [1, 12, 768]
         return GranularFeatureAttributionStepOutput(
             source_attributions=source_attributions if source_attributions is not None else None,
             target_attributions=target_attributions if target_attributions is not None else None,

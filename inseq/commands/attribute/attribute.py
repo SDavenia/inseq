@@ -20,7 +20,7 @@ def aggregate_attribution_scores(
                 select_idx=select_idx,
                 do_post_aggregation_checks=False,
             )
-    else:
+    else: # CTI enters here since selector is None.
         out = out.aggregate(aggregator=aggregators, normalize=normalize_attributions)
     return out
 

@@ -270,12 +270,19 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             **cci_kwargs,
             **args.attribution_kwargs,
         )
+        print(f"cci_attrib_out:\n{cci_attrib_out}")
+        
+        # Below we extract the gradients that we're interested in. I believe it simply aggregates 
+        print(f"selectors: {args.attribution_selectors}") # None
+        print(f"aggregators: {args.attribution_aggregators}")  # None
+        print(f"normalize_attributions: {args.normalize_attributions}") # False
         cci_attrib_out = aggregate_attribution_scores(
             out=cci_attrib_out,
             selectors=args.attribution_selectors,
             aggregators=args.attribution_aggregators,
             normalize_attributions=args.normalize_attributions,
         )[0]
+        print(f"cci_attrib_out:\n{cci_attrib_out}")
         if args.show_intermediate_outputs:
             cci_attrib_out.show(do_aggregation=False)
         source_scores, target_scores = get_source_target_cci_scores(

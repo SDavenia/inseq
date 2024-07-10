@@ -414,6 +414,10 @@ class AttributionModel(ABC, torch.nn.Module):
         attribution_method = self.get_attribution_method(method, override_default_attribution)
         # Define the attributed function (it is a callable function)
         attributed_fn = self.get_attributed_fn(attributed_fn)
+        print(f"Attribution_method: {attribution_method}") # For CTI: Dummy
+                                                           # For CCI: Saliency
+        print(f"Attribution_function: {attributed_fn}")    # For CTI: probability_fn
+                                                           # For CCI: contrast_prob_diff_fn
         if skip_special_tokens:
             kwargs["skip_special_tokens"] = True
         # print(f"get_step_function_reserved_args:\n{self.formatter.get_step_function_reserved_args()}\n\n")
@@ -426,10 +430,15 @@ class AttributionModel(ABC, torch.nn.Module):
             **kwargs,
         )
         # print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
-        # Add context_image to step_scores_args 
+        # CTI
         #print(f"attribution_args: {attribution_args}")      # Empty
         #print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
         #print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
+        # CCI
+        print(f"attribution_args: {attribution_args}")      # Empty
+        print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) since for CCI contrast is the contextless. Additionally stores that contrast_force_inputs: True
+        print(f"step_scores_args: {step_scores_args}")      # Empty
+
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
             pretty_progress = False
@@ -499,6 +508,7 @@ class AttributionModel(ABC, torch.nn.Module):
             logger.warning("Batched attribution currently not supported for LIME. Using batch size of 1.")
             batch_size = 1
         # Actual attribution process 
+
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,

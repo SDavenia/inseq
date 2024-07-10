@@ -238,6 +238,7 @@ class FeatureAttribution(Registry):
 
         # PREPARE BATCH: 
         # For CTI this means preparing the non-contextual one.
+        print(f"Calling prepare_and_attribute, attr_pos_start is: {attr_pos_start}") # For CTI None and needs to be determined while for CCI it is known beforehand
         if not self.attribution_model.is_vlm:
             inputs = (sources, targets)
             # For text LLMs: Used to determine the appropriate attr_pos start
@@ -272,8 +273,11 @@ class FeatureAttribution(Registry):
         #print(f"Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
         # print(f"Pixel values are: {batch.pixel_values}") # Black image.
         #print(f"Batch ids are: {batch.input_ids}")
+                                                    # For CTI batch contains non-contextual objective, i.e. the input ids and embeddings for input + generation.
+        print(f"Batch is: {batch}")                 # For CCI batch contains contextual objective, i.e. the input ids and embeddings for context + input + generation.
+        print(f"Batch ids are: {batch.input_ids}")
 
-        # Determine attr_pos_start for vlms.
+        # Determine attr_pos_start for vlms. In CCI this step is not performed.
         if attr_pos_start is None and self.attribution_model.is_vlm:
             # Determine attr_pos_start (will only work for PaliGemma)
             # FOR VLMs determine after creating batch where to start.
@@ -295,6 +299,13 @@ class FeatureAttribution(Registry):
         attributed_fn = self.attribution_model.get_attributed_fn(attributed_fn)
         #print(f"Finished preparing inputs for attribution.")
 
+        print(f"Calling attribute with:")
+        print(f"Attribution_args:\n\t{attribution_args}")       # CTI: {}
+                                                                # CCI: {}
+        print(f"Attributed_fn_args:\n\t{attributed_fn_args}")   # CTI: {}
+                                                                # CCI: {contrast_sources: None, contrast_targets: 'His colleagues asked him how he was doing', contrast_force_inputs: True}
+        print(f"Step_scores_args:\n\t{step_scores_args}")       # CTI: {contrast_sources: None, contrast_targets: George was sick ... he said he was, context_image: None}
+                                                                # CCI: {}
         # After preparation call the attribution
         attribution_output = self.attribute(
             batch,
@@ -309,10 +320,12 @@ class FeatureAttribution(Registry):
             skip_special_tokens=skip_special_tokens,
             attribution_args=attribution_args,
             attributed_fn_args=attributed_fn_args,
-            step_scores_args=step_scores_args, # contains info on the contrastive batch
+            step_scores_args=step_scores_args, # For CTI contains info on the contrastive batch
         )
         # Same here, repeated from AttributionModel.attribute
         # to allow independent usage
+        # print(f"Attribution_output:\n{attribution_output}") CTI: Contains some generic information but I do not see the results here
+        print(f"Exit attribution output")
         attribution_output.info["include_eos_baseline"] = include_eos_baseline
         attribution_output.info["attributed_fn"] = attributed_fn.__name__
         attribution_output.info["attribution_args"] = attribution_args
@@ -497,12 +510,17 @@ class FeatureAttribution(Registry):
         # - contrast_targets_alignments: Contains the alignments between the non-contextual and contextual generation.
         #       For PaliGemma for now these will be the same as the only thing that changes is that we have a black image instead of a coloured one.
         # print(f"step_scores_args: {step_scores_args}") # Contains contrastive input including image
+        print(f"Attributed_fn_args before:\n{attributed_fn_args}\n\n")  # CTI unimodal: {}
+                                                                        # CCI unimodal (info on non-contextual generation): {'contrast_sources': None, 'contrast_targets': 'His colleagues asked him how he was doing', 'contrast_force_inputs': True}
+        print(f"step_scores_args before:\n{step_scores_args}")          # CTI unimodal: (info on contextual generation)
+                                                                        # CCI unimodal: {}
         (
-            contrast_batch,                 # For unimodal LLMs: Contains context + input + generation.
-                                            # For VLM: Contains image + input + generation
-            contrast_targets_alignments,    # For unimodal LLMs: Contains alignment of contextual and non-contextual case.
-                                            # For VLM when working with black image contains the same alignments since smae lenght.
-            attributed_fn_args,
+            contrast_batch,                 # CTI unimodal: Contains context + input + generation.
+                                            # CTI VLM: Contains image + input + generation
+                                            # CCI unimodal: Contains input + generation.
+            contrast_targets_alignments,    # CTI unimodal : Contains alignment of contextual and non-contextual case.
+                                            # CTI VLM when working with black image contains the same alignments since smae lenght.
+            attributed_fn_args,             #
             step_scores_args,               # Contains information on contrastive targets (like the image itself or the contextual text.)
         ) = self.format_contrastive_targets(
             sequences.targets,
@@ -516,11 +534,13 @@ class FeatureAttribution(Registry):
         )
         #print(f"batch:\n{batch}")
         #print(f"Pixels:\n{batch.pixel_values}")
-        #print(f"contrast batch:\n{contrast_batch}")
+        print(f"contrast batch:\n{contrast_batch}")
         #print(f"Pixels:\n{contrast_batch.pixel_values}")
 
-        #print(f"Attributed_fn_args becomes:\n{attributed_fn_args}\n\n") # Contains info on alignments and contrast targets (i.e. context + input + generation)
-        #print(f"step_scores_args becomes:\n{step_scores_args}")         # Empty
+        print(f"Attributed_fn_args becomes:\n{attributed_fn_args}\n\n") # CTI: {}
+                                                                        # CCI: Contains added info on alignment for the target token at this information + contrast infor (i.e. input + generation)
+        print(f"step_scores_args becomes:\n{step_scores_args}")         # CTI: Contains Added info on alignments and contrast targets (i.e. context + input + generation)
+                                                                        # CCI: {}
 
         # Target tokens with ids contains pairs (token, token_id) for each element in the batch.
         target_tokens_with_ids = self.attribution_model.get_token_with_ids(
@@ -560,6 +580,8 @@ class FeatureAttribution(Registry):
         start = datetime.now()
 
         # Attribution loop for generation: iterate through every generation step.
+        # CTI we iterate through all steps.
+        # CCI enter only for the target CTI token identified.
         for step in range(attr_pos_start, iter_pos_end):
             if self.is_final_step_method and step != iter_pos_end - 1:
                 continue
@@ -573,7 +595,7 @@ class FeatureAttribution(Registry):
             #print(f"attribution_fn_args:\n\t{attributed_fn_args}")
             #print(f"step_scores_args:\n\t{step_scores_args}")
             step_output = self.filtered_attribute_step(
-                batch[:step],                                   # Batch up to current input (no context)
+                batch[:step],                                   # Batch up to current input (CTI: no context; CCI: context)
                 target_ids=tgt_ids.unsqueeze(1),                # target ids at current step
                 attributed_fn=attributed_fn,                    #
                 target_attention_mask=tgt_mask.unsqueeze(1),
@@ -581,16 +603,13 @@ class FeatureAttribution(Registry):
                 step_scores=step_scores,
                 attribution_args=attribution_args,
                 attributed_fn_args=attributed_fn_args,
-                step_scores_args=step_scores_args,              # Contains information on the contrastive batch: 
+                step_scores_args=step_scores_args,              # CTI: Contains information on the contrastive batch: 
                 )                                               #       contrast_targets: input + generation
                                                                 #       context_image: PIL.Image.Image
                                                                 #       contrast_targets_alignments: IDs aligned
-            #print(f"Step output: {step_output}")
-            # print(f"Step{step}. Step output is: {step_output}")
-            # Add batch information to output whixh is:
-            #   - prefix: Generation this far (His colleagues asked him how)
-            #   - target: Target for attribution
-            #print(f"Step output before enrich is: {step_output}")
+                                                                # CCI: Empty
+
+            print(f"Step output is:\n{step_output}\n")
             print(f"Target token: {self.attribution_model.convert_ids_to_tokens(tgt_ids.unsqueeze(1), skip_special_tokens=False),}") # Should contain target token!
             step_output = self.attribution_model.formatter.enrich_step_output(
                 self.attribution_model,
@@ -601,8 +620,14 @@ class FeatureAttribution(Registry):
                 contrast_batch=contrast_batch,
                 contrast_targets_alignments=contrast_targets_alignments,
             )
-            # print(f"Step output after enrich is: {step_output}")
-            # From here there are only minor details.
+            print(f"Step output after enrich is:\n{step_output}") # CTI: Add batch information to output whixh is:
+                                                                  #   - prefix: Generation this far (His colleagues asked him how)
+                                                                  #   - target: Target for attribution
+                                                                  # CCI: Add batch information:
+                                                                  #   - prefix: Context + input + generation this far (excluding target token): [George, was, ... how, he ,was]
+                                                                  #   - target: contains target token at current iteration: [doing]
+            # CTI: From here there are only minor details.
+            # CCI who knows what it does
             attribution_outputs.append(step_output)
             if pretty_progress and not self.is_final_step_method:
                 tgt_tokens = batch.target_tokens
@@ -696,6 +721,11 @@ class FeatureAttribution(Registry):
                 and target attributions of size `(batch_size, source_length)` and `(batch_size, prefix length)`.
                 (target optional if attribute_target=True), plus batch information and any step score present.
         """
+        """
+        For CTI it does most stuff i.e. compute the scores.
+        For CCI it only formats the args as the output of step is a GranularFeatureAttributionStepOutput with: target attributions stored as tensor
+        """
+        print(f"Entering filtered_attribute_step")
         orig_batch = batch.clone().detach().to("cpu")
         is_filtered = False
         # Filter out finished sentences
@@ -712,11 +742,8 @@ class FeatureAttribution(Registry):
         logger.debug(f"batch: {batch},\ntarget_ids: {pretty_tensor(target_ids, lpad=4)}")
 
         f"batch: {batch},\ntarget_ids: {pretty_tensor(target_ids, lpad=4)}" 
-        # Dictionary containing:
-        #   inputs: embeddings of the non-contextual generation
-        #   additional_forward_args: (input_ids, target_ids): tuple containing id of input so far + id of target token in this step.
-        attribute_main_args = self.attribution_model.formatter.format_attribution_args(     # For unimodal LLMs contains embeddings of input (up to generation step.)
-            batch=batch,
+        attribute_main_args = self.attribution_model.formatter.format_attribution_args(   
+            batch=batch,                                                                   
             target_ids=target_ids, 
             attributed_fn=attributed_fn,
             attribute_target=attribute_target,
@@ -725,10 +752,23 @@ class FeatureAttribution(Registry):
             forward_batch_embeds=self.forward_batch_embeds,
             use_baselines=self.use_baselines,
         )
+        print(f"Attribute_main_args:\n{attribute_main_args}")
+        # CTI: Dictionary containing:
+        #       inputs: embeddings of the non-contextual generation
+        #       additional_forward_args: (input_ids, target_ids): tuple containing id of input so far + id of target token in this step.
+        # CCI: Dictionary containing:
+        #       inputs: embeddings of the contextual generation.
+        #       additional_forward_args: (input_ids, target_ids): tuple containing id of context+input so far + id of target token in this step.
+        #                                                           + other things like input + generation up to current token (His colleagues asked him how he was doing), contrast_force_inputs
+        
+        
         # print(f"After calling format_attribution_args batch is:\n{batch}")
+        # For CCI it does not enter since no step scores
         if len(step_scores) > 0 or self.use_attention_weights or self.use_hidden_states:
             with torch.no_grad():
-                # print(f"Generating output without context and using embeddings: {self.forward_batch_embeds}")
+                # CTI: print(f"Generating output without context and using embeddings: {self.forward_batch_embeds}")
+                # CCI: 
+                # print(f"Batch input ids:\n\t{batch.input_ids}")
                 output = self.attribution_model.get_forward_output( # Contains next step generation (to extract target token probability)
                     batch,
                     use_embeddings=self.forward_batch_embeds,
@@ -746,14 +786,18 @@ class FeatureAttribution(Registry):
                 attribution_args = {**attribution_args, **hidden_states_dict}
         
         # Perform attribution step
-        # print(f"Calling attribute_step")
-        step_output = self.attribute_step( # Nothing when doing dummy.
-            attribute_main_args,
+        step_output = self.attribute_step( # Calls dummy.attribute step during CTI
+            attribute_main_args,           # For CCI it calls inseq.attr.feat.gradient_attribution.SaliencyAttribution
             attribution_args,
         )
         # print(f"Step output is:\n{step_output}") # Empty when we're doing dummy attribution.
+                                                 # For CTI it contains GranularFeatureAttributionStepOutput with:
+                                                 #         - target_attributions: embeddings up to target (of Inseq class to track gradient) of context + input + generation up to target token (not included I believe ?).
         # raise ValueError("STOP HERE")
-        # Calculate the step scores (for us only one step score i.e. kl_divergence)
+        # Calculate the step scores 
+        #   CTI: kl_divergence
+        #   CCI: None so it does not Enter!
+        # print(f"Step scores is: {step_scores}")
         for score in step_scores: # In our case step_scores = ["kl_divergence"]
             step_fn_args = self.attribution_model.formatter.format_step_function_args(  # Stores attributed in a StepFunctionVLMArgs class
                 attribution_model=self.attribution_model,
@@ -776,7 +820,6 @@ class FeatureAttribution(Registry):
         if target_attention_mask is not None and is_filtered:
             step_output.remap_from_filtered(target_attention_mask, orig_batch, self.is_final_step_method)
         step_output = step_output.detach().to("cpu")
-        #print(f"After fixes step output is: {step_output}")
         return step_output
 
     def get_attribution_args(self, **kwargs) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -806,8 +849,6 @@ class FeatureAttribution(Registry):
         source_attributions, target_attributions = get_source_target_attributions(
             attr, self.attribution_model.is_encoder_decoder
         )
-        #print(f"Source attributions: {source_attributions}")
-        #print(f"Target attributions: {target_attributions}")
         return FeatureAttributionStepOutput(
             source_attributions=source_attributions,
             target_attributions=target_attributions,
