@@ -83,6 +83,10 @@ class GradientAttributionRegistry(FeatureAttribution, Registry):
                 `(batch_size)` if the attribution step supports deltas and they are requested. At this point the batch
                 information is empty, and will later be filled by the enrich_step_output function.
         """
+        #print(f"self.method is: {self.method}")
+        #print(f"self.method.attribute is: {self.method.attribute}")
+        #print(f"attribute_fn_main_args: {attribute_fn_main_args}")
+        #print(f"Attribution_args: {attribution_args}")
         attr = self.method.attribute(**attribute_fn_main_args, **attribution_args)
         deltas = None
         if (
@@ -210,6 +214,7 @@ class SaliencyAttribution(GradientAttributionRegistry):
     method_name = "saliency"
 
     def __init__(self, attribution_model):
+        print(f"Calling saliency attribution:")
         super().__init__(attribution_model)
         self.method = Saliency(self.attribution_model)
 

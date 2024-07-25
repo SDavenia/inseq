@@ -13,6 +13,10 @@ from .attribute_context_helpers import (
     get_scores_threshold,
 )
 
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from PIL import Image
 
 def get_formatted_procedure_details(args: AttributeContextArgs) -> str:
     def format_comment(std: Optional[float] = None, topk: Optional[int] = None) -> str:
@@ -74,6 +78,8 @@ def get_formatted_attribute_context_results(
         for idx, score, tok in context_ranked_tokens:
             context_tokens[idx] = f"[bold green]{tok}({score:.3f})[/bold green]"
         cci_threshold_comment = f"(CCI > {threshold:.3f})" if threshold is not None else ""
+        print(f"CCI Threshold: {threshold}")
+
         return f"\n[bold]{context_type} context {cci_threshold_comment}:[/bold]\t{''.join(context_tokens)}"
 
     out_string = ""
@@ -152,3 +158,63 @@ def visualize_attribute_context(
     if return_html:
         return html
     return None
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import matplotlib.patches as patches
+
+# Function to overlay the grid and highlight squares
+def visualize_image_context(image_path, cci_scores, target_word, save_path):
+    cci_scores = np.array(cci_scores)
+    mean_ = cci_scores.mean()
+    sd_ = cci_scores.std()
+    threshold = mean_ + sd_
+
+    highlight_list = np.where(cci_scores > threshold, 1, 0)
+
+    # Load and resize the image
+    image = Image.open(image_path).resize((224, 224))
+    width, height = image.size
+    
+    # Calculate the size of each grid square
+    grid_size_x = width // 16
+    grid_size_y = height // 16
+    
+    # Convert the image to a numpy array
+    image_np = np.array(image)
+    
+    # Create a plot
+    fig, ax = plt.subplots()
+    ax.imshow(image_np)
+    
+    # Overlay the grid and highlight squares
+    for i in range(16):
+        for j in range(16):
+            if highlight_list[i * 16 + j] == 1:
+                rect = patches.Rectangle(
+                    (j * grid_size_x, i * grid_size_y),
+                    grid_size_x,
+                    grid_size_y,
+                    linewidth=1,
+                    edgecolor='r',
+                    facecolor='r',
+                    alpha=0.3
+                )
+                ax.add_patch(rect)
+            else:
+                rect = patches.Rectangle(
+                    (j * grid_size_x, i * grid_size_y),
+                    grid_size_x,
+                    grid_size_y,
+                    linewidth=1,
+                    edgecolor='black',
+                    facecolor='none'
+                )
+                ax.add_patch(rect)
+    print(f"save_path_before: {save_path}")
+    save_path = f"{save_path}/target_{target_word}.png"
+    print(f"Save path after: {save_path}")
+    plt.savefig(save_path)
+    plt.close()

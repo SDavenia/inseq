@@ -114,6 +114,7 @@ def generate_with_special_tokens(
 ) -> str:
     """Generate text preserving special tokens in ``special_tokens_to_keep``."""
     # Generate outputs, strip special tokens and remove prefix/suffix
+    print(f"Model input: {repr(model_input)}")
     output_gen = model.generate(
         model_input, input_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
     )[0]
@@ -349,6 +350,8 @@ def get_contextless_output(
     special_tokens_to_keep: list[str] = [],
     generation_kwargs: dict[str, Any] = {},
 ) -> tuple[str, str]:
+    if model.is_vlm:
+        decoder_input_output_separator = ""
     n_ctxless_next_tokens = len(contextless_output_next_tokens)
     next_ctxless_token = None
     if n_ctxless_next_tokens > 0:
@@ -367,7 +370,7 @@ def get_contextless_output(
         contextless_output_tokens = output_current_tokens[:cti_idx] + [next_ctxless_token]
         contextless_output = model.convert_tokens_to_string(contextless_output_tokens, skip_special_tokens=False)
     else:
-        print(f"Generate contextless output")
+        # print(f"Generate contextless output with input: {repr(input_current_text)}")
         contextless_output = generate_contextless_output(
             model,
             input_current_text,
@@ -431,6 +434,25 @@ def get_source_target_cci_scores(
 ) -> tuple[Optional[list[float]], Optional[list[float]]]:
     """Extract attribution scores for the input and output contexts."""
     input_scores, output_scores = None, None
+    if model.is_vlm:
+        # Only select context ones.
+        # if model.is_encoder_decoder
+        #   pass
+        # else:
+        #    QUELLO SOTTO
+        input_scores = cci_attrib_out.target_attributions[:, 0].tolist()
+        #print(f"Input scores: {input_scores}")
+        # print(f"model.vision_config.image_size: {model.config.image_size}") NON SO BENE DOVE STIA PER ORA CONFIG
+        # TODO: TROVA MODO DI FARE QUA: model.config.image_size * model.config.image_size / (model.config.patch_size * model.config.path_size)
+        input_scores = input_scores[0:256] # Context is only the image
+        # TODO: QUA FIXXA CHE FUNGE SOLO PER PALIGEMMA
+        # Now have to cut up to before input ()
+        #print(f"Input current text: {input_current_text}")
+        #print(f"Input context_tokens: {input_context_tokens}")
+        #print(f"Input_full_tokens: {input_full_tokens}")
+        #print(f"Output_context_tokens: {output_context_tokens}")
+        return input_scores, output_scores
+    
     if has_input_context:
         if model.is_encoder_decoder:
             input_scores = cci_attrib_out.source_attributions[:, 0].tolist()

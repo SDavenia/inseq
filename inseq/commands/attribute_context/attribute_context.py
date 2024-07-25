@@ -42,7 +42,7 @@ from .attribute_context_helpers import (
     get_source_target_cci_scores,
     prepare_outputs,
 )
-from .attribute_context_viz_helpers import visualize_attribute_context
+from .attribute_context_viz_helpers import visualize_attribute_context, visualize_image_context
 
 warnings.filterwarnings("ignore")
 transformers.logging.set_verbosity_error()
@@ -89,7 +89,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         output_current_text=args.output_current_text,
         output_template=args.output_template,
         handle_output_context_strategy=args.handle_output_context_strategy,
-        input_context_image = args.context_image,
+        input_context_image = args.context_image,                               # Added context image needed for contextual generation with vlms
         generation_kwargs=deepcopy(args.generation_kwargs),
         special_tokens_to_keep=args.special_tokens_to_keep,
         decoder_input_output_separator=args.decoder_input_output_separator,
@@ -113,9 +113,19 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         output_context_tokens = get_filtered_tokens(
             args.output_context_text, model, args.special_tokens_to_keep, is_target=True
         )
+    # Manually add \n 
+    # TODO: Make it nicer and not manual
+    if model.is_vlm:
+        input_full_text = input_full_text.strip() + '\n'
+        output_full_text = output_full_text[:len(input_full_text)-1].strip() + '\n' + output_full_text[len(input_full_text)-1:].strip()
+    print(f"input full text: {repr(input_full_text)}")
+    print(f"output full text: {repr(input_full_text)}")
+
     input_full_tokens = get_filtered_tokens(input_full_text, model, args.special_tokens_to_keep)
     output_full_tokens = get_filtered_tokens(output_full_text, model, args.special_tokens_to_keep, is_target=True)
     output_current_text_offset = len(output_full_tokens) - len(output_current_tokens)
+    print(f"Output_full_tokens: {output_full_tokens}")
+    print(f"Output current_tokens: {output_current_tokens}")
     formatted_input_current_text = args.contextless_input_current_text.format(current=args.input_current_text)
     formatted_output_current_text = args.contextless_output_current_text.format(current=args.output_current_text)
     if not model.is_encoder_decoder:
@@ -124,22 +134,22 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         formatted_output_current_text = formatted_input_current_text + formatted_output_current_text
 
-
+    # Manually add \n between input and model generation (PaliGemma processor does it, but it seems to get lost in the processing above)
+    # TODO: Make it nicer and not manual.
     if model.is_vlm:
         formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
         formatted_input_current_text = formatted_input_current_text.strip() + '\n'
-        output_full_text = formatted_output_current_text
-    #print(f"formatted_input_current_text: {formatted_input_current_text}")
-    #print(f"formatted_output_current_text: {formatted_output_current_text}")
+    #    output_full_text = formatted_output_current_text
+    print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
+    print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
+    print(f"output full text: {repr(output_full_text)}")
     # Part 1: Context-sensitive Token Identification (CTI)
     print(f"\n\nCTI")
     print(f"model.attribute is called with the following parameters:")
-    print(f"\tInput texts: {formatted_input_current_text} bla")
-    print(f"\tGenerated texts: {formatted_output_current_text} bla")
-    print(f"\tContrast targets: {output_full_text} bla")
+    print(f"\tInput texts: {repr(formatted_input_current_text)}")
+    print(f"\tGenerated texts: {repr(formatted_output_current_text)}")
+    print(f"\tContrast targets: {repr(formatted_output_current_text)}")
     # print(f"Model is: {model}")
-
-   
 
     cti_out = model.attribute(
         input_texts=formatted_input_current_text.rstrip(" "),
@@ -173,7 +183,6 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         std_threshold=args.context_sensitivity_std_threshold,
         topk=args.context_sensitivity_topk,
     )
-    # raise ValueError("STOP BEFORE CCI")
     output = AttributeContextOutput(
         input_context=args.input_context_text,
         input_context_tokens=input_context_tokens,
@@ -185,17 +194,21 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         info=args,
     )
     # Part 2: Contextual Cues Imputation (CCI)
+    print(f"CTI ranked tokens: {cti_ranked_tokens}")
     print(f"Entering CCI...")
 
     # Iterate over all context sensitive generated tokens.
     for cci_step_idx, (cti_idx, cti_score, cti_tok) in enumerate(cti_ranked_tokens):        
         print(f"Processing token {cti_idx} with score {cti_score} and token {cti_tok}")
         contextual_input = model.convert_tokens_to_string(input_full_tokens, skip_special_tokens=False).lstrip(" ")
+        # print(f"HERE Output_full_tokens: {output_full_tokens}") # 'George','was', 'sick', 'yesterday' ... fino alla fine
         contextual_output = model.convert_tokens_to_string(
             output_full_tokens[: output_current_text_offset + cti_idx + 1], skip_special_tokens=False
         ).lstrip(" ")
-        print(f"Contextual input: {contextual_input}")      # Contains context + input. "George was sick yesterday. His colleagues asked him how "
-        print(f"Contextual output: {contextual_output}")    # Contains context + input + generation up to target token (included) "George was sick yesterday. His colleagues asked him how he was **doing**"
+        #print(f"Contextual input: {repr(contextual_input)}")      # Contains (string) context + input. "George was sick yesterday. His colleagues asked him how "
+                                                                   # For VLM Describe this image\n
+        #print(f"Contextual output: {repr(contextual_input)}")     # Contains context + input + generation up to target token (included) "George was sick yesterday. His colleagues asked him how he was **doing**"
+                                                                   # For VLM Describe this image\ncon
         if not contextual_output: # If there is no output generated (not really sure how this could occur)
             output_ctx_tokens = [output_full_tokens[output_current_text_offset + cti_idx]]
             if model.is_encoder_decoder:
@@ -205,7 +218,12 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             output_ctx_tokens = model.convert_string_to_tokens(
                 contextual_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
-        print(f"output_ctx_tokens:\n{output_ctx_tokens}")   # Contains individual tokens of contextual output ['George', 'was', 'sick', ... 'was', 'doing']  
+        print(f"output_ctx_tokens:{repr(output_ctx_tokens)}")   # Contains individual tokens of contextual output up to current attribution step ['George', 'was', 'sick', ... 'was', 'doing']  
+                                                                # For VLM ['Describe', '▁this', '▁image', '\n', 'con']
+        """
+        CONTROLLA POI COME SI COMPORTA LA GENERAZIONE QUA SE HAI UN TOKEN IN MEZZO
+        In input vanno i modificati del tutto?
+        """
         cci_kwargs = {}
         contextless_output = None
         print(f"args.attributed_fn: {args.attributed_fn}")  # Contains attributed_fn: in out case contrast_prob_diff
@@ -213,16 +231,21 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             print(f"Using a contrastive step function:")
             if not model.is_encoder_decoder:
                 # In our case remains the same since contextless_output_prefix is empty since we are not using nested prefixes
-                formatted_input_current_text = concat_with_sep(
-                    formatted_input_current_text, contextless_output_prefix, args.decoder_input_output_separator # input
-                )
-            print(f"Args.contextless_output_next_tokens:\n{args.contextless_output_next_tokens}") # Not sure if that is something that to be there the user has to specify manually.
+                
+                # args.decoder_input_output_separator: For PaliGemma VLM it should be the \n (maybe it would make sense to add it here but for now ignore)
+                #  since we have added it manually above.
+                if not model.is_vlm:
+                    formatted_input_current_text = concat_with_sep(
+                        formatted_input_current_text, contextless_output_prefix, args.decoder_input_output_separator # input
+                    )
+            # print(f"Args.contextless_output_next_tokens:\n{args.contextless_output_next_tokens}") # Empty: Not sure if that is something that to be there the user has to specify manually.
             print(f"Calling get_contextless_output with:")
-            print(f"formatted_input_current_text: {formatted_input_current_text}")
-            print(f"output_current_tokens: {output_current_tokens}")
+            print(f"    formatted_input_current_text: {repr(formatted_input_current_text)}")
+            print(f"    output_current_tokens: {repr(output_current_tokens)}") # Contains full output
             contextless_output = get_contextless_output(    # Ends up calling model generate with only input (for VLM ENSURE black image is passed here in some way, since probs you are passing the image itself.)
                 model,
                 formatted_input_current_text,    # His colleagues asked him how (input only)
+                                                 # Describe this image\n
                 output_current_tokens,           # 
                 cti_idx,
                 cti_ranked_tokens,
@@ -233,32 +256,51 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 args.special_tokens_to_keep,
                 deepcopy(args.generation_kwargs),
             )
-            print(f"Contextless output: {contextless_output}") # String containing generation without context (?) For unimodal example it appears to be the same as contextual case.
-            print(f"Formatted input current text: {formatted_input_current_text}")
+            print(f"Formatted input current text: {repr(formatted_input_current_text)}")
+            if "\n\n" in contextless_output:
+                contextless_output = contextless_output.replace('\n\n', '\n')
+            print(f"Contextless output: {repr(contextless_output)}") # String containing generation without context.
+                                                               # For unimodal example it appears to be the same as contextual case.
+                                                               # For VLM model it is Describe this image\nun 
             cci_kwargs["contrast_sources"] = formatted_input_current_text if model.is_encoder_decoder else None
             cci_kwargs["contrast_targets"] = contextless_output
             output_ctxless_tokens = model.convert_string_to_tokens(
                 contextless_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
             tok_pos = -2 if model.is_encoder_decoder else -1
-            print(f"output_ctx_tokens: {output_ctx_tokens[tok_pos]}")           # Next token when generating with context 
-            print(f"output_ctxless_tokens: {output_ctxless_tokens[tok_pos]}")   # Next token when generating without contextless
+            print(f"output_ctx_tokens: {repr(output_ctx_tokens[tok_pos])}")           # Next token when generating with context (for VLM con)
+            print(f"output_ctxless_tokens: {repr(output_ctxless_tokens[tok_pos])}")   # Next token when generating without contextless (for VLM un)
+
             # If we are using kl divergence for attributed_fn or if the token is the same in the context and contextless output.
-            
             if args.attributed_fn == "kl_divergence" or output_ctx_tokens[tok_pos] == output_ctxless_tokens[tok_pos]:
                 print(f"Setting contrast_force_inputs: True")
                 cci_kwargs["contrast_force_inputs"] = True
         bos_offset = int(model.is_encoder_decoder or output_ctx_tokens[0] == model.bos_token)
+        print(f"output_current_text_offset: {output_current_text_offset}") # [0: describe, 1: this, 2: image, 3:\n, 4: un]
+        print(f"cti_idx: {cti_idx}") 
+        print(f"bos_offset: {bos_offset}")
         pos_start = output_current_text_offset + cti_idx + bos_offset + int(has_lang_tag)
+        # TODO: Fix pos_start in a nicer way than hard-coding it like here
+        if model.is_vlm:
+            bos_offset = 1
+            img_tokens = 256
+            pos_start = pos_start + bos_offset + img_tokens
+
+        # Add context image to cci_kwargs        
+        # Need to find a way to pass image but not in the same way as before as we need it for batch and not for contrast_batch.
+        if model.is_vlm:
+            cci_kwargs['cci_context_image'] = args.context_image
+            
         print(f"Calling model attribute with:")
-        print(f"    Contextual input: {contextual_input}")    # context + input
-        print(f"    Contextual output: {contextual_output}")  # context + input + output (generated with context)
-        print(f"    Position start: {pos_start}")             # 12: position of the token currently being investigated
+        print(f"    Contextual input: {repr(contextual_input)}")    # context + input
+        print(f"    Contextual output: {repr(contextual_output)}")  # context + input + output (generated with context)
+        print(f"    Position start: {pos_start}")                   # 12: position of the token currently being investigated
         print(f"    Attributed function: {args.attributed_fn}")     # contrast_prob_diff
         print(f"    Attribution method: {args.attribution_method}") # saliency
         print(f"    CCI Kwargs: {cci_kwargs}")                      # contrast_sources: only for encoder decoder I believe.
-                                                                    # contrast_targets: input + generation up to CTI token (obtained with context).
-                                                                    # contrast_force_inputs: True
+                                                                    # contrast_targets: input + generation up to CTI token (obtained without context).
+                                                                    # contrast_force_inputs: True depending on how it was set above!
+        print(f"    Args.attribution_kwargs: {args.attribution_kwargs}") # {}
         cci_attrib_out = model.attribute(
             contextual_input,
             contextual_output,
@@ -267,6 +309,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             attr_pos_start=pos_start,
             attributed_fn=args.attributed_fn,
             method=args.attribution_method,
+            cci=1,
             **cci_kwargs,
             **args.attribution_kwargs,
         )
@@ -283,6 +326,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             normalize_attributions=args.normalize_attributions,
         )[0]
         print(f"cci_attrib_out:\n{cci_attrib_out}")
+        # print(f"cci_target_attributions:\n{cci_attrib_out.target_attributions}")
         if args.show_intermediate_outputs:
             cci_attrib_out.show(do_aggregation=False)
         source_scores, target_scores = get_source_target_cci_scores(
@@ -300,6 +344,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             args.decoder_input_output_separator,
             args.special_tokens_to_keep,
         )
+        print(f"source scores: {len(source_scores)}") # Should contain scors for the target tokens
+        print(f"target scores: {target_scores}") # None for decoder only models
         cci_out = CCIOutput(
             cti_idx=cti_idx,
             cti_token=cti_tok,
@@ -309,8 +355,23 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             input_context_scores=source_scores,
             output_context_scores=target_scores,
         )
+        # TODO: FA SCHIFO scritto cosi
+        if model.is_vlm:
+            cci_out.contextual_output =  '<img>' * 256 + cci_out.contextual_output
+            cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
         output.cci_scores.append(cci_out)
-    if args.show_viz or args.viz_path:
+        #print(f"cci_out : {cci_out}")
+        #print(f"cci_out.input_context_scores: {cci_out.input_context_scores}")
+
+        # Save the image for VLM visualization
+        print(f"Target is: {cci_out.cti_token}")
+        visualize_image_context(image_path = args.context_image_path, 
+                                cci_scores=cci_out.input_context_scores, 
+                                target_word=cci_out.cti_token,
+                                save_path='extra_samu/images_attribution/')
+    
+    raise ValueError("STOP HERE")
+    if args.show_viz or args.viz_path and not model.is_vlm:
         visualize_attribute_context(output, model, cti_threshold)
     if not args.add_output_info:
         output.info = None

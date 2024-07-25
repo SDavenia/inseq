@@ -316,7 +316,7 @@ class AttributionModel(ABC, torch.nn.Module):
         self,
         input_texts: TextInput,
         generated_texts: Optional[TextInput] = None,
-        # context_image: Optional[ImageInput] = None, 
+        # context_image: Optional[ImageInput] = None,  Now it is a kwargs!
         method: Optional[str] = None,
         override_default_attribution: Optional[bool] = False,
         attr_pos_start: Optional[int] = None,
@@ -333,6 +333,7 @@ class AttributionModel(ABC, torch.nn.Module):
         generate_from_target_prefix: bool = False,
         skip_special_tokens: bool = False,
         generation_args: dict[str, Any] = {},
+        cci=0,
         **kwargs, # Includes context_image now!
     ) -> FeatureAttributionOutput:
         """Perform sequential attribution of input texts for every token in generated texts using the specified method.
@@ -395,7 +396,14 @@ class AttributionModel(ABC, torch.nn.Module):
             attribution process.
         """
         print(f"Calling attribute from inseq.models.attribution_model.py")
-        # print(f"Attribution pos start is: {attr_pos_start}")
+        # CAPIRE DOVE QUESTA SIA STATA INFILATA!
+        #if cci==1:
+        #    print(f"kwargs: {kwargs}")
+        #    print(f"kwargs cci_context_image: {kwargs['cci_context_image']}")
+        
+        #print(f"Attribution pos start is: {attr_pos_start}")
+        #if cci==1:
+        #    raise ValueError("STOP HERE")
         #### General setup
         if self.is_encoder_decoder and not input_texts:
             raise ValueError("At least one text must be provided to perform attribution.")
@@ -436,9 +444,9 @@ class AttributionModel(ABC, torch.nn.Module):
         #print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
         # CCI
         print(f"attribution_args: {attribution_args}")      # Empty
-        print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) since for CCI contrast is the contextless. Additionally stores that contrast_force_inputs: True
+        print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) which for CCI is the contextless one. Additionally stores that contrast_force_inputs: True
         print(f"step_scores_args: {step_scores_args}")      # Empty
-
+                                                            # For VLM added cci_context_image
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
             pretty_progress = False
@@ -449,7 +457,9 @@ class AttributionModel(ABC, torch.nn.Module):
                     " sequence. Please remove the step scores and compute them separatly passing method='dummy'."
                 )
         
-        input_texts, generated_texts = format_input_texts(input_texts, generated_texts) # input text is input, generated_text is the force decoded option. Ensures that generated_text starts with input_text
+        input_texts, generated_texts = format_input_texts(input_texts, generated_texts) # input text is input, 
+                                                                                        # generated_text is the force decoded option. 
+                                                                                        # Ensures that generated_text starts with input_text
         has_generated_texts = generated_texts is not None
         if not self.is_encoder_decoder:
             for i in range(len(input_texts)):               # Iterate over all input texts.
@@ -508,7 +518,8 @@ class AttributionModel(ABC, torch.nn.Module):
             logger.warning("Batched attribution currently not supported for LIME. Using batch size of 1.")
             batch_size = 1
         # Actual attribution process 
-
+        print(f"input_texts: {repr(input_texts)}")
+        print(f"generated_texts: {repr(generated_texts)}")
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
@@ -522,11 +533,16 @@ class AttributionModel(ABC, torch.nn.Module):
             step_scores=step_scores,
             include_eos_baseline=include_eos_baseline,
             skip_special_tokens=skip_special_tokens,
+            cci=cci,
             attributed_fn=attributed_fn,
             attribution_args=attribution_args,
             attributed_fn_args=attributed_fn_args,
-            step_scores_args=step_scores_args,  # context_image should be included here.
+            step_scores_args=step_scores_args,  # CTI: context_image should be included here.
+                                                # CCI: cci_context_image should be included here.
         )
+        #if cci == 1:
+        #    print(f"Attribution output:\n{attribution_outputs}")
+        #    raise ValueError("STOP HERE")
         attribution_output = merge_attributions(attribution_outputs)
         attribution_output.info["input_texts"] = input_texts
         attribution_output.info["generated_texts"] = (

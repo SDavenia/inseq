@@ -51,6 +51,8 @@ def get_batch_from_inputs(
     skip_special_tokens: bool = False,
 ) -> Batch:
     # print(f"Calling get_batch_from_inputs")
+    print(f"Inside get_batch_from_inputs inputs is: {inputs}")
+    print(f"Type: {type(inputs)}")
     if isinstance(inputs, Batch):
         batch = inputs
     else:
@@ -62,8 +64,20 @@ def get_batch_from_inputs(
                 include_eos_baseline=include_eos_baseline,
                 add_special_tokens=not skip_special_tokens,
             )
+        # Added because when getting here with CCI we have input ('Describe this image\nun', None) and check can cause an issue
+        elif isinstance(inputs[0], (str, list)) and inputs[1] is None:
+            textual_inputs = inputs[0]
+            import PIL
+            # Generate black image
+            context_images =  PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
+            encodings: BatchEncoding = attribution_model.encode(
+                texts=textual_inputs,
+                context_images=context_images,
+                # add_special_tokens # NOT DEFINED THIS IS ALL TO DOUBLE CHECK
+                # return_baseline=True, NOT DEFINED
+            )
         elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
-            #print(f"Entering get_batch_from_inputs for VLMs.")
+            print(f"Entering get_batch_from_inputs for VLMs.")
             textual_inputs, context_images = inputs
             encodings: BatchEncoding = attribution_model.encode(
                 texts=textual_inputs,

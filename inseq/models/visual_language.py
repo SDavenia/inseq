@@ -52,19 +52,19 @@ class VLMInputFormatter(InputFormatter):
         """
         #print(f"Calling prepare_inputs_for_attributions (VLM Model)")
         #print(f"Before adding black image Inputs are: {inputs}")
-        # If inputs is only a string, add a black image to it.
+
+        # Inputs can be:
+        # - list containing a string -> We're doing CTI and add black image!
+        # - (list containing a string, image) -> We're doing CCI!
+
+        # Need to add black image
         if not isinstance(inputs, tuple):
-            if not isinstance(inputs[0], str):
-                raise ValueError("Inputs should be a string to add a black image to.")
-            #print(f"Inputs is:\n{inputs}")
-            #print(f"Adding black image as input")
             black_image = PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
-            # black_image.save("black_image.png")
             inputs = (inputs, black_image)
-        #print(f"visual_language.py: Now inputs is: {inputs}")
+        # print(f"inputs inside: {repr(inputs[0][0])}") Here additional \n is not present
         batch = get_batch_from_inputs(
             attribution_model,
-            inputs=inputs, # To be called here inputs should be (textual_input, context_image)
+            inputs=inputs, # To be called here inputs should be (textual_input, context_image) where textual input is a list of strings
             include_eos_baseline=include_eos_baseline,
             as_targets=False,
             skip_special_tokens=skip_special_tokens,
@@ -104,7 +104,7 @@ class VLMInputFormatter(InputFormatter):
                 - input_ids of the input + generated tokens so far
                 - target_ids: the target token id (i.e. the token that was force generated in this step)
         """
-        # print(f"Calling format_attribution_args (decoder only)")
+        # print(f"Calling format_attribution_args (VLM only)")
         if attribute_batch_ids:
             inputs = (batch.input_ids,)
         else:
@@ -170,10 +170,21 @@ class VLMInputFormatter(InputFormatter):
         decoder_input_ids: Optional[IdsTensor] = None,
         decoder_attention_mask: Optional[IdsTensor] = None,
         decoder_input_embeds: Optional[EmbeddingsTensor] = None,
-        pixel_values = None, # TODO AGGIUNGI IL TIPO
         **kwargs,
     ) -> DecoderOnlyBatch:
-        raise NotImplementedError("convert_args_to_batch not implemented cause not needed for VLM!")
+        print(f"Calling convert_args_to_batch (VLM)")
+        #print(f"Args is:\n{args}")
+
+        #print(f"Decoder input ids: {decoder_input_ids}")
+        #print(f"Decoder attention_mask: {decoder_attention_mask}")
+        #print(f"Decoder input_embeds: {decoder_input_embeds}")
+        if args is not None:
+            decoder_input_ids = args.decoder_input_ids
+            decoder_attention_mask = args.decoder_attention_mask
+            decoder_input_embeds = args.decoder_input_embeds
+        encoding = BatchEncoding(decoder_input_ids, decoder_attention_mask)
+        embedding = BatchEmbedding(decoder_input_embeds)
+        return DecoderOnlyBatch(encoding, embedding)
     
     # SAME AS DECODER ONLY
     @staticmethod
@@ -223,6 +234,39 @@ class VLMInputFormatter(InputFormatter):
             step_output.target = join_token_ids(target_tokens, [[idx] for idx in target_ids.tolist()])
             step_output.prefix = join_token_ids(batch.target_tokens, batch.target_ids.tolist())
         return step_output
+    
+    # For now left the same as decoder one
+    @staticmethod
+    def format_forward_args(forward_fn: ForwardMethod) -> Callable[..., CustomForwardOutput]:
+        @wraps(forward_fn)
+        def formatted_forward_input_wrapper(
+            self: "VLMAttributionModel",
+            forward_tensor: AttributionForwardInputs,
+            input_ids: IdsTensor,
+            target_ids: ExpandedTargetIdsTensor,
+            attributed_fn: Callable[..., SingleScorePerStepTensor],
+            attention_mask: Optional[IdsTensor] = None,
+            use_embeddings: bool = True,
+            attributed_fn_argnames: Optional[list[str]] = None,
+            *args,
+            **kwargs,
+        ) -> CustomForwardOutput:
+            batch = self.formatter.convert_args_to_batch(
+                decoder_input_ids=input_ids,
+                decoder_attention_mask=attention_mask,
+                decoder_input_embeds=forward_tensor if use_embeddings else None,
+            )
+            print(f"Batch is:\n{batch}")
+            print(f"target_ids: {target_ids}")
+            print(f"*args: {args}")    # Contains contrastive generation (contextless one) and alignments (problem since one too many!)
+                                       #  VLM CCI: *args: (None, 'Describe this image\nun', [[(261, 261), (262, 262)]])
+            print(f"kwargs: {kwargs}") #  VLM CCI: kwargs: {}
+            print(f"Forwoard_fn: {forward_fn}") #
+            return forward_fn(
+                self, batch, target_ids, attributed_fn, use_embeddings, attributed_fn_argnames, *args, **kwargs
+            )
+
+        return formatted_forward_input_wrapper
 
  
 
@@ -259,14 +303,21 @@ class VLMAttributionModel(AttributionModel):
         final_mask = final_mask.float()
         positional_ids = torch.arange(1, step + 1).unsqueeze(0)
 
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"WHOO CALLING LANGUAGE MODEL HERE with args:\n")
+        print(f"input_ids:\n{batch.input_ids.to(device) if not use_embeddings else None,}")
+        print(f"input_embeds:\n{batch.input_embeds.to(device) if use_embeddings else None,}")
+        print(f"Attention mask with shape: {final_mask.shape}")
+        print(f"position_ids with shape: {positional_ids.shape}")
+        print(f"kwargs: {kwargs}")
         return self.model.language_model( 
-            input_ids=batch.input_ids if not use_embeddings else None,
-            inputs_embeds=batch.input_embeds if use_embeddings else None,
+            input_ids=batch.input_ids.to(device) if not use_embeddings else None,
+            inputs_embeds=batch.input_embeds.to(device) if use_embeddings else None,
             # Hacky fix for petals' distributed models while awaiting attention_mask support:
             # https://github.com/bigscience-workshop/petals/pull/206
             #attention_mask=batch.attention_mask if not self.is_distributed else None,
-            attention_mask=final_mask,
-            position_ids = positional_ids,
+            attention_mask=final_mask.to(device),
+            position_ids = positional_ids.to(device),
             **kwargs,
         )
 

@@ -637,6 +637,8 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         try:
             # print(f"Add special tokens is: {add_special_tokens}")
             # print(f"Texts is: {texts}")
+            # https://stackoverflow.com/questions/76130589/what-is-the-function-of-the-text-target-parameter-in-huggingfaces-autotokeni
+            # To clear difference between text and text_target
             batch = self.processor(
                 text=texts,
                 images=context_images,
@@ -728,7 +730,6 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
         # print(f"Inside def embed we have the encodings as: {inputs}")
         return self.embed_ids(inputs, 
                               # as_targets, 
-                              #black_embeds=black_embeds
                               )
     
     # OVERRIDE PREVIOUSLY DEFINED EMBED IDS: IN THIS CASE PERFORM MANUALLY STEPS TO CREATE AN INPUT.
@@ -796,8 +797,13 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
             `Union[List[str], Tuple[List[str], ModelOutput]]`: Generated text or a tuple of generated text and
             generation outputs.
         """
-        if isinstance(inputs, str) or (
-            isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
+        # Added for CCI when called from generate_contextual and there is no image -> Add a black one.
+        if context_images is None or isinstance(context_images, list):
+            from PIL import Image
+            print(f"Adding black image manually in model.generate")
+            context_images = Image.new("RGB", (224, 224), (0, 0, 0))
+            
+        if isinstance(inputs, str) or (isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
         ):
             inputs = self.encode(inputs, context_images, add_special_tokens=not skip_special_tokens)
             # print(f"Encoded inputs ids are: {inputs.input_ids}")
