@@ -240,7 +240,7 @@ class FeatureAttribution(Registry):
 
         # PREPARE BATCH: 
         # For CTI this means preparing the non-contextual one.
-        print(f"Calling prepare_and_attribute, attr_pos_start is: {attr_pos_start}") # For CTI None and needs to be determined 
+        #print((f"Calling prepare_and_attribute, attr_pos_start is: {attr_pos_start}") # For CTI None and needs to be determined 
                                                                                      # For CCI it is known beforehand
 
         if not self.attribution_model.is_vlm:
@@ -248,15 +248,15 @@ class FeatureAttribution(Registry):
             # For text LLMs: Used to determine the appropriate attr_pos start
             if not self.attribution_model.is_encoder_decoder:
                 inputs = targets # Contains input + generation (with context).
-                #print(f"Sources is: {sources}")
+                ##print((f"Sources is: {sources}")
                 encoded_sources = self.attribution_model.encode(
                     sources, return_baseline=True, add_special_tokens=not skip_special_tokens
                 )
-                #print(f"Encoded sources: {encoded_sources}")
+                ##print((f"Encoded sources: {encoded_sources}")
                 # We do this here to support separate attr_pos_start for different sentences when batching
                 if attr_pos_start is None or attr_pos_start < encoded_sources.input_ids.shape[1]:
                     attr_pos_start = encoded_sources.input_ids.shape[1]
-                #print(f"Attr pos start is: {attr_pos_start}")
+                ##print((f"Attr pos start is: {attr_pos_start}")
         # If model is a vlm:
         #  Leave attr_pos_start to be determined later 
         #  Set inputs to only the textual target.
@@ -264,36 +264,38 @@ class FeatureAttribution(Registry):
             # Means we are in CCI and need the batch to contain the image!
             if 'cci_context_image' in step_scores_args:
                 inputs = (targets, step_scores_args['cci_context_image']) 
-                print(f"inputs[0]: {repr(inputs[0][0])}") # Describe this image\ncon
+                #print((f"inputs[0]: {repr(inputs[0][0])}") # Describe this image\ncon
             else:
                 inputs = targets # Contains textual input only (since we want generation with black image.)
-                print(f"inputs[0]: {repr(inputs[0])}") # Describe this image \ncon
+                #print((f"inputs[0]: {repr(inputs[0])}") # Describe this image \ncon
 
         # Prepare the batch that will be used for attribution. 
         # For unimodal LLMs it contains the encodings + embeddings for the input + generated text
         # Returns a DecoderOnlyBatch with encoding + embeddings (both for image and when image is not provided, i.e. when passing a black image). 
         #  when we call prepare_inputs_for_attribution for vlm with no image, it is assumed that we are passing a black image.
         
-        #CTI: print(f"Preparing batch for black image since we only have input: {inputs}")
+        #CTI: #print((f"Preparing batch for black image since we only have input: {inputs}")
         batch = self.attribution_model.formatter.prepare_inputs_for_attribution(
             self.attribution_model, inputs, include_eos_baseline, skip_special_tokens
         )
-        #print(f"CTI: Batch for (black) input is: {batch}\n") # batch for input + generation.
-        #print(f"CTI: Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
-        # print(f"CTI: Pixel values are: {batch.pixel_values}") # Black image.
-        #print(f"Batch ids are: {batch.input_ids}")
+        ##print((f"CTI: Batch for (black) input is: {batch}\n") # batch for input + generation.
+        ##print((f"CTI: Batch for (black) input has embeddings:\n{batch.input_embeds[0, 5, :10]}")
+        # #print((f"CTI: Pixel values are: {batch.pixel_values}") # Black image.
+        ##print((f"Batch ids are: {batch.input_ids}")
                                                     # For CTI batch contains non-contextual objective, i.e. the input ids and embeddings for input + generation.
-        print(f"Batch is: {batch}")                 # For CCI batch contains contextual objective, i.e. the input ids and embeddings for context + input + generation.
+        #print((f"Batch is: {batch}")                 # For CCI batch contains contextual objective, i.e. the input ids and embeddings for context + input + generation.
         if self.attribution_model.is_vlm:
-            print(f"Batch ids are: {repr([self.attribution_model.processor.decode(x) for x in batch.input_ids])}")
+            #print((f"Batch ids are: {repr([self.attribution_model.processor.decode(x) for x in batch.input_ids])}")
         
             # PaliGemma processor adds \n after being called, but remove it!
             # TODO: Do something nicer and add it to prepare_inputs_for_attribution!
-            print(f"{repr(self.attribution_model.processor.decode(batch.input_ids[0, -1]))}")
-        """if self.attribution_model.is_vlm:
-            if self.attribution_model.processor.decode(batch.input_ids[0, -1]) == '\n':
-            # print(f"SHOULD ENTER: Slicing batch!")
-                batch = batch[:-1]"""
+            #print((f"{repr(self.attribution_model.processor.decode(batch.input_ids[0, -1]))}")
+            """
+            if self.attribution_model.is_vlm:
+                if self.attribution_model.processor.decode(batch.input_ids[0, -1]) == '\n':
+                # print(f"SHOULD ENTER: Slicing batch!")
+                    batch = batch[:-1]
+            """
         # print(f"Now batch is: {batch}")
         
         # Determine attr_pos_start for vlms. In CCI this step is not performed.
@@ -318,12 +320,12 @@ class FeatureAttribution(Registry):
         attributed_fn = self.attribution_model.get_attributed_fn(attributed_fn)
         #print(f"Finished preparing inputs for attribution.")
 
-        print(f"Calling attribute with:")
-        print(f"Attribution_args:\n\t{attribution_args}")       # CTI: {}
+        #print((f"Calling attribute with:")
+        #print((f"Attribution_args:\n\t{attribution_args}")       # CTI: {}
                                                                 # CCI: {}
-        print(f"Attributed_fn_args:\n\t{attributed_fn_args}")   # CTI: {}
+        #print((f"Attributed_fn_args:\n\t{attributed_fn_args}")   # CTI: {}
                                                                 # CCI: {contrast_sources: None, contrast_targets: 'His colleagues asked him how he was doing', contrast_force_inputs: True}
-        print(f"Step_scores_args:\n\t{step_scores_args}")       # CTI: {contrast_sources: None, contrast_targets: George was sick ... he said he was, context_image: None}
+        #print((f"Step_scores_args:\n\t{step_scores_args}")       # CTI: {contrast_sources: None, contrast_targets: George was sick ... he said he was, context_image: None}
                                                                 # CCI: {cci_context_image: PIL.Image.Image} Added in case it is needed.
         # After preparation call the attribution
         attribution_output = self.attribute(
@@ -346,7 +348,7 @@ class FeatureAttribution(Registry):
         # Same here, repeated from AttributionModel.attribute
         # to allow independent usage
         # print(f"Attribution_output:\n{attribution_output}") CTI: Contains some generic information but I do not see the results here
-        print(f"Exit attribution output")
+        #print((f"Exit attribution output")
         attribution_output.info["include_eos_baseline"] = include_eos_baseline
         attribution_output.info["attributed_fn"] = attributed_fn.__name__
         attribution_output.info["attribution_args"] = attribution_args
@@ -525,7 +527,7 @@ class FeatureAttribution(Registry):
                 an optional added list of single :class:`~inseq.data.FeatureAttributionStepOutput` for each step and
                 extra information regarding the attribution parameters.
         """
-        print(f"Attribution pos start is: {attr_pos_start}")
+        #print((f"Attribution pos start is: {attr_pos_start}")
         #if cci == 1:
         #    raise ValueError("STOP HERE")
         
@@ -551,7 +553,7 @@ class FeatureAttribution(Registry):
         # CCI:                   -> It is contextual generation 
         sequences = self.attribution_model.formatter.get_text_sequences(self.attribution_model, batch)
         
-        print(f"Sequences: {sequences}")   # TODO: For VLM we have a \n too much at the end, check this later!
+        #print((f"Sequences: {sequences}")   # TODO: For VLM we have a \n too much at the end, check this later!
         #if cci == 1:
         #    raise ValueError("STOP HERE")
         
@@ -560,9 +562,9 @@ class FeatureAttribution(Registry):
         #   - contrast_targets_alignments: Contains the alignments between the non-contextual and contextual generation.
         #           For PaliGemma for now these will be the same as the only thing that changes is that we have a black image instead of a coloured one.
         # print(f"step_scores_args: {step_scores_args}") # Contains contrastive input including image
-        print(f"Attributed_fn_args before:\n{attributed_fn_args}")      # CTI unimodal: {}
+        #print((f"Attributed_fn_args before:\n{attributed_fn_args}")      # CTI unimodal: {}
                                                                         # CCI unimodal (info on non-contextual generation): {'contrast_sources': None, 'contrast_targets': 'His colleagues asked him how he was doing', 'contrast_force_inputs': True}
-        print(f"step_scores_args before:\n{step_scores_args}")          # CTI unimodal: (info on contextual generation)
+        #print((f"step_scores_args before:\n{step_scores_args}")          # CTI unimodal: (info on contextual generation)
                                                                         # CCI unimodal: {}
         # For VLM CCI we have:
         #   Attributed_fn_args contains info on non-contextual generation (contrast): Describte this image\nun
@@ -600,24 +602,24 @@ class FeatureAttribution(Registry):
 
 
 
-        print(f"batch:\n{batch}")
+        #print((f"batch:\n{batch}")
         #print(f"Pixels:\n{batch.pixel_values}")
-        print(f"contrast batch:\n{contrast_batch}")
+        #print((f"contrast batch:\n{contrast_batch}")
         #print(f"Pixels:\n{contrast_batch.pixel_values}")
 
         if self.attribution_model.is_vlm:
-            print(f"\n\nBatch id:\n{[self.attribution_model.processor.decode(x) for x in batch.input_ids]}")
-            print(f"Batch input ids: {batch.input_ids}")
-            print(f"Length: {len([batch.input_ids][0])}")
-            print(f"Contrast Batch id:\n{[self.attribution_model.processor.decode(x) for x in contrast_batch.input_ids]}")
-            print(f"Length: {len([contrast_batch.input_ids][0])}")
-
+            #print((f"\n\nBatch id:\n{[self.attribution_model.processor.decode(x) for x in batch.input_ids]}")
+            #print((f"Batch input ids: {batch.input_ids}")
+            #print((f"Length: {len([batch.input_ids][0])}")
+            #print((f"Contrast Batch id:\n{[self.attribution_model.processor.decode(x) for x in contrast_batch.input_ids]}")
+            #print((f"Length: {len([contrast_batch.input_ids][0])}")
+            pass
         #if cci == 1:
         #    raise ValueError("STOP HERE")
 
-        print(f"Attributed_fn_args becomes:\n{attributed_fn_args}\n\n") # CTI: {}
+        #print((f"Attributed_fn_args becomes:\n{attributed_fn_args}\n\n") # CTI: {}
                                                                         # CCI: Contains added info on alignment for the target token at this information + contrast infor (i.e. input + generation)
-        print(f"step_scores_args becomes:\n{step_scores_args}")         # CTI: Contains Added info on alignments and contrast targets (i.e. context + input + generation)
+        #print((f"step_scores_args becomes:\n{step_scores_args}")         # CTI: Contains Added info on alignments and contrast targets (i.e. context + input + generation)
                                                                         # CCI: {}
         #if cci == 1:
         #    raise ValueError("STOP HERE")
@@ -656,8 +658,8 @@ class FeatureAttribution(Registry):
         attribution_outputs = []
 
         start = datetime.now()
-        print(f"Iter pos start: {attr_pos_start}")
-        print(f"Iter pos end: {attr_pos_end}")
+        #print((f"Iter pos start: {attr_pos_start}")
+        #print((f"Iter pos end: {attr_pos_end}")
 
         # To avoid the issue with processor of paligemma adding \n after processing.
         # TODO: SOLVE THIS.
@@ -671,15 +673,17 @@ class FeatureAttribution(Registry):
                 continue
             tgt_ids, tgt_mask = batch.get_step_target(step, with_attention=True)
             # Compute step
-            print(f"Batch up to step is:\n{batch[:step]}")
-            print(f"Batch input ids: {batch.input_ids}")
+            #print((f"Batch up to step is:\n{batch[:step]}")
+            #print((f"Batch input ids: {batch.input_ids}")
             if self.attribution_model.is_vlm:
-                print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.processor.decode(batch.input_ids[0, step])}") 
+                #print((f"Calling filtered attribute step ({step}) on token: {self.attribution_model.processor.decode(batch.input_ids[0, step])}") 
+                pass
             else:
-                print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.tokenizer.decode(batch.input_ids[0, step])}") 
-            print(f"attribution_args:\n\t{attribution_args}")
-            print(f"attribution_fn_args:\n\t{attributed_fn_args}")
-            print(f"step_scores_args:\n\t{step_scores_args}") # CCI: Contains the actual image.
+                pass
+                #print(f"Calling filtered attribute step ({step}) on token: {self.attribution_model.tokenizer.decode(batch.input_ids[0, step])}") 
+            #print(f"attribution_args:\n\t{attribution_args}")
+            #print(f"attribution_fn_args:\n\t{attributed_fn_args}")
+            #print(f"step_scores_args:\n\t{step_scores_args}") # CCI: Contains the actual image.
 
             step_output = self.filtered_attribute_step(
                 batch[:step],                                   # Batch up to current input (CTI: no context; CCI: context)
@@ -697,7 +701,7 @@ class FeatureAttribution(Registry):
                                                                 #       contrast_targets_alignments: IDs aligned
                                                                 # CCI: Empty
 
-            print(f"Step output is:\n{step_output}\n")
+            #print((f"Step output is:\n{step_output}\n")
             print(f"Target token: {self.attribution_model.convert_ids_to_tokens(tgt_ids.unsqueeze(1), skip_special_tokens=False),}") # Should contain target token!
 
             step_output = self.attribution_model.formatter.enrich_step_output(
@@ -709,14 +713,14 @@ class FeatureAttribution(Registry):
                 contrast_batch=contrast_batch,
                 contrast_targets_alignments=contrast_targets_alignments,
             )
-            print(f"Step output after enrich is:\n{step_output}") # CTI: Add batch information to output whixh is:
+            #print((f"Step output after enrich is:\n{step_output}") # CTI: Add batch information to output whixh is:
                                                                   #   - prefix: Generation this far (His colleagues asked him how)
                                                                   #   - target: Target for attribution
                                                                   # CCI: Add batch information:
                                                                   #   - prefix: Context + input + generation this far (excluding target token): [George, was, ... how, he ,was]
                                                                   #   - target: contains target token at current iteration: [doing] (and possibly what it is being compared with like un -> con)
-            print(f"step_output prefix: {step_output.prefix}")
-            print(f"step_output target: {step_output.target}")
+            #print((f"step_output prefix: {step_output.prefix}")
+            #print((f"step_output target: {step_output.target}")
             # CTI: From here there are only minor details.
             # CCI 
             attribution_outputs.append(step_output)
@@ -817,7 +821,7 @@ class FeatureAttribution(Registry):
         For CTI it does most stuff i.e. compute the scores.
         For CCI it only formats the args as the output of step is a GranularFeatureAttributionStepOutput with: target attributions stored as tensor
         """
-        print(f"Entering filtered_attribute_step")
+        #print((f"Entering filtered_attribute_step")
         orig_batch = batch.clone().detach().to("cpu")
         is_filtered = False
         # Filter out finished sentences
@@ -844,7 +848,7 @@ class FeatureAttribution(Registry):
             forward_batch_embeds=self.forward_batch_embeds,
             use_baselines=self.use_baselines,
         )
-        print(f"Attribute_main_args:\n{attribute_main_args}")
+        #print((f"Attribute_main_args:\n{attribute_main_args}")
         # CTI: Dictionary containing:
         #       inputs: embeddings of the non-contextual generation
         #       additional_forward_args: (input_ids, target_ids): tuple containing id of input so far + id of target token in this step.
@@ -882,7 +886,7 @@ class FeatureAttribution(Registry):
             attribute_main_args,           # For CCI it calls inseq.attr.feat.gradient_attribution.SaliencyAttribution
             attribution_args,
         )
-        print(f"Step output is:\n{step_output}") # Empty when we're doing dummy attribution.
+        # print(f"Step output is:\n{step_output}") # Empty when we're doing dummy attribution.
                                                  # For CTI it contains GranularFeatureAttributionStepOutput with:
                                                  #         - target_attributions: embeddings up to target (of Inseq class to track gradient) of context + input + generation up to target token (not included I believe ?).
         #if cci == 1:

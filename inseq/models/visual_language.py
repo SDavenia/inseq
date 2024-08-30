@@ -304,12 +304,12 @@ class VLMAttributionModel(AttributionModel):
         positional_ids = torch.arange(1, step + 1).unsqueeze(0)
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f"WHOO CALLING LANGUAGE MODEL HERE with args:\n")
-        print(f"input_ids:\n{batch.input_ids.to(device) if not use_embeddings else None,}")
-        print(f"input_embeds:\n{batch.input_embeds.to(device) if use_embeddings else None,}")
-        print(f"Attention mask with shape: {final_mask.shape}")
-        print(f"position_ids with shape: {positional_ids.shape}")
-        print(f"kwargs: {kwargs}")
+        #print(f"WHOO CALLING LANGUAGE MODEL HERE with args:\n")
+        #print(f"input_ids:\n{batch.input_ids.to(device) if not use_embeddings else None,}")
+        #print(f"input_embeds:\n{batch.input_embeds.to(device) if use_embeddings else None,}")
+        #print(f"Attention mask with shape: {final_mask.shape}")
+        #print(f"position_ids with shape: {positional_ids.shape}")
+        #print(f"kwargs: {kwargs}")
         return self.model.language_model( 
             input_ids=batch.input_ids.to(device) if not use_embeddings else None,
             inputs_embeds=batch.input_embeds.to(device) if use_embeddings else None,

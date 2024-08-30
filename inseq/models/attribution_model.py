@@ -201,7 +201,7 @@ class InputFormatter:
                     end_pos=end_pos,
                 )
             )
-        # print(f"adjusted_alignments: {adjusted_alignments}")
+        # #print(f"adjusted_alignments: {adjusted_alignments}")
         return adjusted_alignments
 
 
@@ -281,8 +281,8 @@ class AttributionModel(ABC, torch.nn.Module):
         override_default_attribution: Optional[bool] = False,
         **kwargs,
     ) -> FeatureAttribution:
-        #print(f"Calling get_attribution_method from inseq.models.attribution_model.py")
-        print(f"Attribution Method is: {method}")
+        ##print(f"Calling get_attribution_method from inseq.models.attribution_model.py")
+        #print(f"Attribution Method is: {method}")
         # No method present -> missing method error
         if not method:
             if not self.attribution_method:
@@ -395,13 +395,13 @@ class AttributionModel(ABC, torch.nn.Module):
             step-scores, optionally step-wise attributions and general information concerning attributed texts and the
             attribution process.
         """
-        print(f"Calling attribute from inseq.models.attribution_model.py")
+        #print(f"Calling attribute from inseq.models.attribution_model.py")
         # CAPIRE DOVE QUESTA SIA STATA INFILATA!
         #if cci==1:
-        #    print(f"kwargs: {kwargs}")
-        #    print(f"kwargs cci_context_image: {kwargs['cci_context_image']}")
+        #    #print(f"kwargs: {kwargs}")
+        #    #print(f"kwargs cci_context_image: {kwargs['cci_context_image']}")
         
-        #print(f"Attribution pos start is: {attr_pos_start}")
+        ##print(f"Attribution pos start is: {attr_pos_start}")
         #if cci==1:
         #    raise ValueError("STOP HERE")
         #### General setup
@@ -422,14 +422,14 @@ class AttributionModel(ABC, torch.nn.Module):
         attribution_method = self.get_attribution_method(method, override_default_attribution)
         # Define the attributed function (it is a callable function)
         attributed_fn = self.get_attributed_fn(attributed_fn)
-        print(f"Attribution_method: {attribution_method}") # For CTI: Dummy
+        #print(f"Attribution_method: {attribution_method}") # For CTI: Dummy
                                                            # For CCI: Saliency
-        print(f"Attribution_function: {attributed_fn}")    # For CTI: probability_fn
+        #print(f"Attribution_function: {attributed_fn}")    # For CTI: probability_fn
                                                            # For CCI: contrast_prob_diff_fn
         if skip_special_tokens:
             kwargs["skip_special_tokens"] = True
-        # print(f"get_step_function_reserved_args:\n{self.formatter.get_step_function_reserved_args()}\n\n")
-        # print(f"Step scores args before:\n {step_scores_args}")
+        # #print(f"get_step_function_reserved_args:\n{self.formatter.get_step_function_reserved_args()}\n\n")
+        # #print(f"Step scores args before:\n {step_scores_args}")
         attribution_args, attributed_fn_args, step_scores_args = extract_args(
             attribution_method,
             attributed_fn,
@@ -437,15 +437,15 @@ class AttributionModel(ABC, torch.nn.Module):
             default_args=self.formatter.get_step_function_reserved_args(), # Now default_args should include context image for VLMs
             **kwargs,
         )
-        # print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
+        # #print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
         # CTI
-        #print(f"attribution_args: {attribution_args}")      # Empty
-        #print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
-        #print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
+        ##print(f"attribution_args: {attribution_args}")      # Empty
+        ##print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
+        ##print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
         # CCI
-        print(f"attribution_args: {attribution_args}")      # Empty
-        print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) which for CCI is the contextless one. Additionally stores that contrast_force_inputs: True
-        print(f"step_scores_args: {step_scores_args}")      # Empty
+        #print(f"attribution_args: {attribution_args}")      # Empty
+        #print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) which for CCI is the contextless one. Additionally stores that contrast_force_inputs: True
+        #print(f"step_scores_args: {step_scores_args}")      # Empty
                                                             # For VLM added cci_context_image
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
@@ -518,8 +518,8 @@ class AttributionModel(ABC, torch.nn.Module):
             logger.warning("Batched attribution currently not supported for LIME. Using batch size of 1.")
             batch_size = 1
         # Actual attribution process 
-        print(f"input_texts: {repr(input_texts)}")
-        print(f"generated_texts: {repr(generated_texts)}")
+        #print(f"input_texts: {repr(input_texts)}")
+        #print(f"generated_texts: {repr(generated_texts)}")
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
@@ -541,7 +541,7 @@ class AttributionModel(ABC, torch.nn.Module):
                                                 # CCI: cci_context_image should be included here.
         )
         #if cci == 1:
-        #    print(f"Attribution output:\n{attribution_outputs}")
+        #    #print(f"Attribution output:\n{attribution_outputs}")
         #    raise ValueError("STOP HERE")
         attribution_output = merge_attributions(attribution_outputs)
         attribution_output.info["input_texts"] = input_texts

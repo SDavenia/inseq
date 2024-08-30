@@ -16,6 +16,12 @@ inseq attribute-context \
     --input_current_text "His colleagues asked him" \
     --attributed_fn contrast_prob_diff
 ```
+
+PaliGemma-224
+python -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
+
+PaliGemma-448
+python -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
 """
 
 import json
@@ -52,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     """Attribute the generation of context-sensitive tokens in ``output_current_text`` to input/output contexts."""
-    print(f"Loading model...")
+    # print(f"Loading model...")
     model: HuggingfaceModel = load_model(
         args.model_name_or_path,
         args.attribution_method,
@@ -118,14 +124,13 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     if model.is_vlm:
         input_full_text = input_full_text.strip() + '\n'
         output_full_text = output_full_text[:len(input_full_text)-1].strip() + '\n' + output_full_text[len(input_full_text)-1:].strip()
-    print(f"input full text: {repr(input_full_text)}")
-    print(f"output full text: {repr(input_full_text)}")
+    #print(f"input full text: {repr(input_full_text)}")
+    #print(f"output full text: {repr(input_full_text)}")
 
     input_full_tokens = get_filtered_tokens(input_full_text, model, args.special_tokens_to_keep)
     output_full_tokens = get_filtered_tokens(output_full_text, model, args.special_tokens_to_keep, is_target=True)
     output_current_text_offset = len(output_full_tokens) - len(output_current_tokens)
-    print(f"Output_full_tokens: {output_full_tokens}")
-    print(f"Output current_tokens: {output_current_tokens}")
+    #print(f"Output current_tokens: {output_current_tokens}")
     formatted_input_current_text = args.contextless_input_current_text.format(current=args.input_current_text)
     formatted_output_current_text = args.contextless_output_current_text.format(current=args.output_current_text)
     if not model.is_encoder_decoder:
@@ -140,15 +145,15 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
         formatted_input_current_text = formatted_input_current_text.strip() + '\n'
     #    output_full_text = formatted_output_current_text
-    print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
-    print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
-    print(f"output full text: {repr(output_full_text)}")
+    #print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
+    #print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
+    #print(f"output full text: {repr(output_full_text)}")
     # Part 1: Context-sensitive Token Identification (CTI)
-    print(f"\n\nCTI")
-    print(f"model.attribute is called with the following parameters:")
-    print(f"\tInput texts: {repr(formatted_input_current_text)}")
-    print(f"\tGenerated texts: {repr(formatted_output_current_text)}")
-    print(f"\tContrast targets: {repr(formatted_output_current_text)}")
+    #print(f"\n\nCTI")
+    #print(f"model.attribute is called with the following parameters:")
+    #print(f"\tInput texts: {repr(formatted_input_current_text)}")
+    #print(f"\tGenerated texts: {repr(formatted_output_current_text)}")
+    #print(f"\tContrast targets: {repr(formatted_output_current_text)}")
     # print(f"Model is: {model}")
 
     cti_out = model.attribute(
@@ -177,12 +182,30 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     if model.is_encoder_decoder:
         cti_scores = cti_scores[:-1]
         cti_tokens = cti_tokens[:-1]
+    print(f"cti tokens: {cti_tokens}")
+    print(f"cti scores: {cti_scores}")
+    # For paligemma last token is \n generation -> Remove it from CTI for my experiments for now.
+    if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-mix-448':
+        cti_tokens = cti_tokens[:-1]
+        cti_scores = cti_scores[:-1]
     cti_ranked_tokens, cti_threshold = filter_rank_tokens(
         tokens=cti_tokens,
         scores=cti_scores,
         std_threshold=args.context_sensitivity_std_threshold,
         topk=args.context_sensitivity_topk,
-    )
+    )   
+    print(cti_ranked_tokens)
+    # YESSAVE
+    import os
+    # No need to change since these are only stored temporally to be read back by the model.
+    cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    os.makedirs(cti_scores_path, exist_ok=True)
+    cti_scores_file = os.path.join(cti_scores_path, f"cti_scores.txt")
+    with open(cti_scores_file, 'w') as f:
+        for item in cti_ranked_tokens:
+            score = item[1]
+            f.write(f"{score}\n")
+
     output = AttributeContextOutput(
         input_context=args.input_context_text,
         input_context_tokens=input_context_tokens,
@@ -199,7 +222,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
 
     # Iterate over all context sensitive generated tokens.
     for cci_step_idx, (cti_idx, cti_score, cti_tok) in enumerate(cti_ranked_tokens):        
-        print(f"Processing token {cti_idx} with score {cti_score} and token {cti_tok}")
+        # print(f"Processing token {cti_idx} with score {cti_score} and token {cti_tok}")
         contextual_input = model.convert_tokens_to_string(input_full_tokens, skip_special_tokens=False).lstrip(" ")
         # print(f"HERE Output_full_tokens: {output_full_tokens}") # 'George','was', 'sick', 'yesterday' ... fino alla fine
         contextual_output = model.convert_tokens_to_string(
@@ -218,7 +241,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             output_ctx_tokens = model.convert_string_to_tokens(
                 contextual_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
-        print(f"output_ctx_tokens:{repr(output_ctx_tokens)}")   # Contains individual tokens of contextual output up to current attribution step ['George', 'was', 'sick', ... 'was', 'doing']  
+        #print(f"output_ctx_tokens:{repr(output_ctx_tokens)}")   # Contains individual tokens of contextual output up to current attribution step ['George', 'was', 'sick', ... 'was', 'doing']  
                                                                 # For VLM ['Describe', '▁this', '▁image', '\n', 'con']
         """
         CONTROLLA POI COME SI COMPORTA LA GENERAZIONE QUA SE HAI UN TOKEN IN MEZZO
@@ -226,9 +249,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         """
         cci_kwargs = {}
         contextless_output = None
-        print(f"args.attributed_fn: {args.attributed_fn}")  # Contains attributed_fn: in out case contrast_prob_diff
+        #print(f"args.attributed_fn: {args.attributed_fn}")  # Contains attributed_fn: in out case contrast_prob_diff
         if args.attributed_fn is not None and is_contrastive_step_function(args.attributed_fn):
-            print(f"Using a contrastive step function:")
+            #print(f"Using a contrastive step function:")
             if not model.is_encoder_decoder:
                 # In our case remains the same since contextless_output_prefix is empty since we are not using nested prefixes
                 
@@ -239,9 +262,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                         formatted_input_current_text, contextless_output_prefix, args.decoder_input_output_separator # input
                     )
             # print(f"Args.contextless_output_next_tokens:\n{args.contextless_output_next_tokens}") # Empty: Not sure if that is something that to be there the user has to specify manually.
-            print(f"Calling get_contextless_output with:")
-            print(f"    formatted_input_current_text: {repr(formatted_input_current_text)}")
-            print(f"    output_current_tokens: {repr(output_current_tokens)}") # Contains full output
+            #print(f"Calling get_contextless_output with:")
+            #print(f"    formatted_input_current_text: {repr(formatted_input_current_text)}")
+            #print(f"    output_current_tokens: {repr(output_current_tokens)}") # Contains full output
             contextless_output = get_contextless_output(    # Ends up calling model generate with only input (for VLM ENSURE black image is passed here in some way, since probs you are passing the image itself.)
                 model,
                 formatted_input_current_text,    # His colleagues asked him how (input only)
@@ -256,10 +279,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 args.special_tokens_to_keep,
                 deepcopy(args.generation_kwargs),
             )
-            print(f"Formatted input current text: {repr(formatted_input_current_text)}")
+            #print(f"Formatted input current text: {repr(formatted_input_current_text)}")
             if "\n\n" in contextless_output:
                 contextless_output = contextless_output.replace('\n\n', '\n')
-            print(f"Contextless output: {repr(contextless_output)}") # String containing generation without context.
+            #print(f"Contextless output: {repr(contextless_output)}") # String containing generation without context.
                                                                # For unimodal example it appears to be the same as contextual case.
                                                                # For VLM model it is Describe this image\nun 
             cci_kwargs["contrast_sources"] = formatted_input_current_text if model.is_encoder_decoder else None
@@ -268,39 +291,46 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 contextless_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
             tok_pos = -2 if model.is_encoder_decoder else -1
-            print(f"output_ctx_tokens: {repr(output_ctx_tokens[tok_pos])}")           # Next token when generating with context (for VLM con)
-            print(f"output_ctxless_tokens: {repr(output_ctxless_tokens[tok_pos])}")   # Next token when generating without contextless (for VLM un)
+            #print(f"output_ctx_tokens: {repr(output_ctx_tokens[tok_pos])}")           # Next token when generating with context (for VLM con)
+            #print(f"output_ctxless_tokens: {repr(output_ctxless_tokens[tok_pos])}")   # Next token when generating without contextless (for VLM un)
 
             # If we are using kl divergence for attributed_fn or if the token is the same in the context and contextless output.
             if args.attributed_fn == "kl_divergence" or output_ctx_tokens[tok_pos] == output_ctxless_tokens[tok_pos]:
-                print(f"Setting contrast_force_inputs: True")
+                #print(f"Setting contrast_force_inputs: True")
                 cci_kwargs["contrast_force_inputs"] = True
         bos_offset = int(model.is_encoder_decoder or output_ctx_tokens[0] == model.bos_token)
-        print(f"output_current_text_offset: {output_current_text_offset}") # [0: describe, 1: this, 2: image, 3:\n, 4: un]
-        print(f"cti_idx: {cti_idx}") 
-        print(f"bos_offset: {bos_offset}")
+        #print(f"output_current_text_offset: {output_current_text_offset}") # [0: describe, 1: this, 2: image, 3:\n, 4: un]
+        #print(f"cti_idx: {cti_idx}") 
+        #print(f"bos_offset: {bos_offset}")
         pos_start = output_current_text_offset + cti_idx + bos_offset + int(has_lang_tag)
         # TODO: Fix pos_start in a nicer way than hard-coding it like here
         if model.is_vlm:
-            bos_offset = 1
-            img_tokens = 256
-            pos_start = pos_start + bos_offset + img_tokens
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+                bos_offset = 1
+                img_tokens = 256
+                pos_start = pos_start + bos_offset + img_tokens
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+                bos_offset = 1
+                img_tokens = 1024
+                pos_start = pos_start + bos_offset + img_tokens
+            else:
+                raise ValueError("At the moment model specific implementations work only for paligemma models.")
 
         # Add context image to cci_kwargs        
         # Need to find a way to pass image but not in the same way as before as we need it for batch and not for contrast_batch.
         if model.is_vlm:
             cci_kwargs['cci_context_image'] = args.context_image
             
-        print(f"Calling model attribute with:")
-        print(f"    Contextual input: {repr(contextual_input)}")    # context + input
-        print(f"    Contextual output: {repr(contextual_output)}")  # context + input + output (generated with context)
-        print(f"    Position start: {pos_start}")                   # 12: position of the token currently being investigated
-        print(f"    Attributed function: {args.attributed_fn}")     # contrast_prob_diff
-        print(f"    Attribution method: {args.attribution_method}") # saliency
-        print(f"    CCI Kwargs: {cci_kwargs}")                      # contrast_sources: only for encoder decoder I believe.
+        #print(f"Calling model attribute with:")
+        #print(f"    Contextual input: {repr(contextual_input)}")    # context + input
+        #print(f"    Contextual output: {repr(contextual_output)}")  # context + input + output (generated with context)
+        #print(f"    Position start: {pos_start}")                   # 12: position of the token currently being investigated
+        #print(f"    Attributed function: {args.attributed_fn}")     # contrast_prob_diff
+        #print(f"    Attribution method: {args.attribution_method}") # saliency
+        #print(f"    CCI Kwargs: {cci_kwargs}")                      # contrast_sources: only for encoder decoder I believe.
                                                                     # contrast_targets: input + generation up to CTI token (obtained without context).
                                                                     # contrast_force_inputs: True depending on how it was set above!
-        print(f"    Args.attribution_kwargs: {args.attribution_kwargs}") # {}
+        #print(f"    Args.attribution_kwargs: {args.attribution_kwargs}") # {}
         cci_attrib_out = model.attribute(
             contextual_input,
             contextual_output,
@@ -314,18 +344,17 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             **args.attribution_kwargs,
         )
         print(f"cci_attrib_out:\n{cci_attrib_out}")
-        
         # Below we extract the gradients that we're interested in. I believe it simply aggregates 
-        print(f"selectors: {args.attribution_selectors}") # None
-        print(f"aggregators: {args.attribution_aggregators}")  # None
-        print(f"normalize_attributions: {args.normalize_attributions}") # False
+        #print(f"selectors: {args.attribution_selectors}") # None
+        #print(f"aggregators: {args.attribution_aggregators}")  # None
+        #print(f"normalize_attributions: {args.normalize_attributions}") # False
         cci_attrib_out = aggregate_attribution_scores(
             out=cci_attrib_out,
             selectors=args.attribution_selectors,
             aggregators=args.attribution_aggregators,
             normalize_attributions=args.normalize_attributions,
         )[0]
-        print(f"cci_attrib_out:\n{cci_attrib_out}")
+        #print(f"cci_attrib_out:\n{cci_attrib_out}")
         # print(f"cci_target_attributions:\n{cci_attrib_out.target_attributions}")
         if args.show_intermediate_outputs:
             cci_attrib_out.show(do_aggregation=False)
@@ -344,8 +373,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             args.decoder_input_output_separator,
             args.special_tokens_to_keep,
         )
-        print(f"source scores: {len(source_scores)}") # Should contain scors for the target tokens
-        print(f"target scores: {target_scores}") # None for decoder only models
+        #print(f"source scores: {len(source_scores)}") # Should contain scors for the target tokens
+        #print(f"target scores: {target_scores}") # None for decoder only models
         cci_out = CCIOutput(
             cti_idx=cti_idx,
             cti_token=cti_tok,
@@ -357,20 +386,57 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         # TODO: FA SCHIFO scritto cosi
         if model.is_vlm:
-            cci_out.contextual_output =  '<img>' * 256 + cci_out.contextual_output
-            cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+                cci_out.contextual_output =  '<img>' * 256 + cci_out.contextual_output
+                cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+                cci_out.contextual_output =  '<img>' * 1024 + cci_out.contextual_output
+                cci_out.contextless_output =  '<img>' * 1024 + cci_out.contextless_output
+            else:
+                raise ValueError("At the moment model specific implementations work only for paligemma models.")
         output.cci_scores.append(cci_out)
         #print(f"cci_out : {cci_out}")
         #print(f"cci_out.input_context_scores: {cci_out.input_context_scores}")
-
         # Save the image for VLM visualization
-        print(f"Target is: {cci_out.cti_token}")
+        #print(f"Target is: {cci_out.cti_token}")
+
+        # Added save=False to avoid getting lost.
+        # NOSAVE
+        if model.is_vlm:
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+                img_shape = (224, 224)
+                patch_shape = (14, 14)
+                img_tokens = (img_shape[0] * img_shape[1]) / (patch_shape[0] * patch_shape[1])
+                n_patches_x = img_shape[0] / patch_shape[0] # Number of patches on the horizontal side of the image
+                n_patches_y = img_shape[1] / patch_shape[1] # Number of patches on the vertical side of the image
+                if n_patches_x != int(n_patches_x) or n_patches_y != int(n_patches_y):
+                    raise ValueError("n_patches_x and n_patches_y assumed to be whole numbers (e.g., 32.0).")
+                n_patches = (int(n_patches_x), int(n_patches_y))
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+                img_shape = (448, 448)
+                patch_shape = (14, 14)
+                img_tokens = (img_shape[0] * img_shape[1]) / (patch_shape[0] * patch_shape[1])
+                n_patches_x = img_shape[0] / patch_shape[0]
+                n_patches_y = img_shape[1] / patch_shape[1]
+                if n_patches_x != int(n_patches_x) or n_patches_y != int(n_patches_y):
+                    raise ValueError("n_patches_x and n_patches_y assumed to be whole numbers (e.g., 32.0).")
+                n_patches = (int(n_patches_x), int(n_patches_y))
+            else:
+                raise ValueError("At the moment model specific implementations work only for paligemma models.")
         visualize_image_context(image_path = args.context_image_path, 
-                                cci_scores=cci_out.input_context_scores, 
-                                target_word=cci_out.cti_token,
-                                save_path='extra_samu/images_attribution/')
+                                cci_scores = cci_out.input_context_scores, 
+                                cci_step_idx=cci_step_idx,
+                                target_word = cci_out.cti_token,
+                                save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
+                                args=args,
+                                img_shape = img_shape, 
+                                patch_shape = patch_shape, 
+                                n_patches = n_patches,
+                                save=True) # YESSAVE: If this is False then only the img with the bboxes highlighted is saved
     
-    raise ValueError("STOP HERE")
+    if args.context_image is not None:
+        # Stop here for VLM as no point in showing from terminal.
+        return output
     if args.show_viz or args.viz_path and not model.is_vlm:
         visualize_attribute_context(output, model, cti_threshold)
     if not args.add_output_info:

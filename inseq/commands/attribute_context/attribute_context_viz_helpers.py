@@ -78,7 +78,7 @@ def get_formatted_attribute_context_results(
         for idx, score, tok in context_ranked_tokens:
             context_tokens[idx] = f"[bold green]{tok}({score:.3f})[/bold green]"
         cci_threshold_comment = f"(CCI > {threshold:.3f})" if threshold is not None else ""
-        print(f"CCI Threshold: {threshold}")
+        # print(f"CCI Threshold: {threshold}")
 
         return f"\n[bold]{context_type} context {cci_threshold_comment}:[/bold]\t{''.join(context_tokens)}"
 
@@ -164,23 +164,31 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as patches
+import os
 
-# Function to overlay the grid and highlight squares
-def visualize_image_context(image_path, cci_scores, target_word, save_path):
-    cci_scores = np.array(cci_scores)
-    mean_ = cci_scores.mean()
-    sd_ = cci_scores.std()
-    threshold = mean_ + sd_
-
-    highlight_list = np.where(cci_scores > threshold, 1, 0)
+def visualize_image_context(image_path, cci_scores, cci_step_idx, target_word, save_path, args, img_shape, patch_shape, n_patches, save=False):
+    """
+    img_shape: to what shape the model reshapes the image.
+    patch_shape: shape of the model patches.
+    grid_size: how many patches are on the grid (n_hor, n_ver)
+    """
+    cci_scores_np = np.array(cci_scores)
+    mean_ = cci_scores_np.mean()
+    sd_ = cci_scores_np.std()
+    threshold = mean_ + args.attribution_std_threshold * sd_
+    cci_scores_threshold = [x for x in cci_scores if x > threshold] # Scores above the threshold: Save only those.
+    
+    highlight_list = np.where(cci_scores_np > threshold, 1, 0)
 
     # Load and resize the image
-    image = Image.open(image_path).resize((224, 224))
-    width, height = image.size
+    image = Image.open(image_path).resize(img_shape) 
+    width, height = img_shape
     
     # Calculate the size of each grid square
-    grid_size_x = width // 16
-    grid_size_y = height // 16
+    n_patches_x, n_patches_y = n_patches
+    patch_size_x, patch_size_y = patch_shape
+    #grid_size_x = width // 16
+    #grid_size_y = height // 16
     
     # Convert the image to a numpy array
     image_np = np.array(image)
@@ -189,32 +197,61 @@ def visualize_image_context(image_path, cci_scores, target_word, save_path):
     fig, ax = plt.subplots()
     ax.imshow(image_np)
     
-    # Overlay the grid and highlight squares
-    for i in range(16):
-        for j in range(16):
-            if highlight_list[i * 16 + j] == 1:
+    # Prepare to save bounding box coordinates of the patches corresponding to above threshold entries.
+    # all_bbox_coordinates = []
+    bbox_coordinates = []
+
+    for i in range(n_patches_x):
+        for j in range(n_patches_y):
+            x = j * patch_size_x
+            y = i * patch_size_y
+
+            if highlight_list[i * patch_size_y + j] == 1:
                 rect = patches.Rectangle(
-                    (j * grid_size_x, i * grid_size_y),
-                    grid_size_x,
-                    grid_size_y,
+                    (x, y),
+                    patch_size_x,
+                    patch_size_y,
                     linewidth=1,
                     edgecolor='r',
                     facecolor='r',
                     alpha=0.3
                 )
                 ax.add_patch(rect)
+                
+                # Save bounding box coordinates (top-left and bottom-right corners)
+                bbox_coordinates.append((x, y, x + patch_size_x, y + patch_size_y))
             else:
                 rect = patches.Rectangle(
-                    (j * grid_size_x, i * grid_size_y),
-                    grid_size_x,
-                    grid_size_y,
+                    (x, y),
+                    patch_size_x,
+                    patch_size_y,
                     linewidth=1,
                     edgecolor='black',
                     facecolor='none'
                 )
                 ax.add_patch(rect)
-    print(f"save_path_before: {save_path}")
-    save_path = f"{save_path}/target_{target_word}.png"
-    print(f"Save path after: {save_path}")
-    plt.savefig(save_path)
+    
+    # Save image with bboxes (not good for future as whenever I get two target words that are identical they will be overridden and become useless).
+    save_path_image = f"{save_path}/images/target_{target_word}.png"
+    plt.savefig(save_path_image)
     plt.close()
+    if save == False:
+        return
+    # Also save the bbox of the identified squares (TODO: Make it model independent, for PaliGemma squares are read left down but others also have different crops!
+    bboxes_file_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/bboxes' 
+    os.makedirs(bboxes_file_path, exist_ok=True)
+    bboxes_txt_file = os.path.join(bboxes_file_path, f"step{cci_step_idx}_{target_word}_bboxes.txt")
+    
+    with open(bboxes_txt_file, 'w') as f:
+        for bbox in bbox_coordinates:
+            f.write(f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}\n")
+
+    # Also save above threshold cci_scores
+    cci_file_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cci_scores' 
+    os.makedirs(cci_file_path, exist_ok=True)
+    cci_scores_txt_file = os.path.join(cci_file_path, f"step{cci_step_idx}_{target_word}_cci_scores.txt")
+    
+    with open(cci_scores_txt_file, 'w') as f:
+        for cci_score in cci_scores_threshold:
+            f.write(f"{cci_score}\n")
+    #print(f"Bbox coordinates saved to: {txt_file}")

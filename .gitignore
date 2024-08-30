@@ -760,3 +760,7 @@ FodyWeavers.xsd
 
 ## KEYS
 tokens.txt
+
+## Sbatch and output files.
+*.out
+*.sh

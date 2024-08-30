@@ -328,9 +328,11 @@ def filter_rank_tokens(
     std_threshold: Optional[float] = None,
     topk: Optional[int] = None,
 ) -> tuple[list[tuple[int, float, str]], float]:
+    print(f"std_threshold: {std_threshold}")
     indices = list(range(0, len(scores)))
     token_score_tuples = sorted(zip(indices, scores, tokens), key=lambda x: abs(x[1]), reverse=True)
     threshold = get_scores_threshold(scores, std_threshold)
+    print(f"threshold: {threshold}")
     token_score_tuples = [(i, s, t) for i, s, t in token_score_tuples if abs(s) >= threshold]
     if topk:
         token_score_tuples = token_score_tuples[:topk]
@@ -406,7 +408,7 @@ def generate_contextless_output(
     else:
         generation_kwargs["max_new_tokens"] = 1
         generation_input = concat_with_sep(input_current_text, contextual_prefix, decoder_input_output_separator)
-    print(f"Generating with generation_input: {generation_input}")
+    # print(f"Generating with generation_input: {generation_input}")
     contextless_output = generate_with_special_tokens(
         model,
         generation_input,
@@ -444,8 +446,13 @@ def get_source_target_cci_scores(
         #print(f"Input scores: {input_scores}")
         # print(f"model.vision_config.image_size: {model.config.image_size}") NON SO BENE DOVE STIA PER ORA CONFIG
         # TODO: TROVA MODO DI FARE QUA: model.config.image_size * model.config.image_size / (model.config.patch_size * model.config.path_size)
-        input_scores = input_scores[0:256] # Context is only the image
-        # TODO: QUA FIXXA CHE FUNGE SOLO PER PALIGEMMA
+        print(model.model_name)
+        if model.model_name == 'google/paligemma-3b-mix-224':
+            input_scores = input_scores[0:256]
+        elif model.model_name == 'google/paligemma-3b-mix-448':
+            input_scores = input_scores[0:1024]
+        else:
+            raise ValueError("At the moment model specific implementations work only for paligemma models.")
         # Now have to cut up to before input ()
         #print(f"Input current text: {input_current_text}")
         #print(f"Input context_tokens: {input_context_tokens}")

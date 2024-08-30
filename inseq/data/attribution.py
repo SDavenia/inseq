@@ -51,8 +51,8 @@ def get_batch_from_inputs(
     skip_special_tokens: bool = False,
 ) -> Batch:
     # print(f"Calling get_batch_from_inputs")
-    print(f"Inside get_batch_from_inputs inputs is: {inputs}")
-    print(f"Type: {type(inputs)}")
+    #print(f"Inside get_batch_from_inputs inputs is: {inputs}")
+    #print(f"Type: {type(inputs)}")
     if isinstance(inputs, Batch):
         batch = inputs
     else:
@@ -77,7 +77,7 @@ def get_batch_from_inputs(
                 # return_baseline=True, NOT DEFINED
             )
         elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
-            print(f"Entering get_batch_from_inputs for VLMs.")
+            #print(f"Entering get_batch_from_inputs for VLMs.")
             textual_inputs, context_images = inputs
             encodings: BatchEncoding = attribution_model.encode(
                 texts=textual_inputs,
@@ -243,6 +243,8 @@ class FeatureAttributionSequenceOutput(TensorWrapper, AggregableMixin):
             `List[FeatureAttributionSequenceOutput]`: List of
             :class:`~inseq.data.attribution.FeatureAttributionSequenceOutput` objects.
         """
+        print(f"Attributions are:\n{attributions}")
+        print(f"Attributions[0] are:\n{attributions[0]}")
         attr = attributions[0]
         num_sequences = len(attr.prefix)
         if not all(len(attr.prefix) == num_sequences for attr in attributions):

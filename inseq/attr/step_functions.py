@@ -310,7 +310,7 @@ def kl_divergence_fn(
         kl_divergence[i] = F.kl_div(
             filtered_contrast_logprobs[i], filtered_original_logprobs[i], reduction="sum", log_target=True
         )
-    print(f"The step kl divergence is: {kl_divergence}")
+    # print(f"The step kl divergence is: {kl_divergence}")
     # raise ValueError("STOP HERE")
     return kl_divergence
 
