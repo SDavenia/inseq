@@ -232,6 +232,7 @@ def visualize_image_context(image_path, cci_scores, cci_step_idx, target_word, s
                 ax.add_patch(rect)
     
     # Save image with bboxes (not good for future as whenever I get two target words that are identical they will be overridden and become useless).
+    print(f"SAVING IMAGE")
     save_path_image = f"{save_path}/images/target_{target_word}.png"
     plt.savefig(save_path_image)
     plt.close()

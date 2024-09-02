@@ -597,9 +597,10 @@ class FeatureAttribution(Registry):
         # Remove the additional \n at the end 
         if cci == 1:
             batch = batch[:-1]
-            contrast_batch = contrast_batch[:-1]
-            # Because here otherwise the tuple for the \n added by the processor is also included.
-            attributed_fn_args['contrast_targets_alignments'] = [x[0] for x in attributed_fn_args['contrast_targets_alignments']]
+            if contrast_batch is not None:
+                contrast_batch = contrast_batch[:-1]
+                # Because here otherwise the tuple for the \n added by the processor is also included.
+                attributed_fn_args['contrast_targets_alignments'] = [x[0] for x in attributed_fn_args['contrast_targets_alignments']]
 
 
 

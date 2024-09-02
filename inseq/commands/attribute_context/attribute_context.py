@@ -203,8 +203,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     if model.is_encoder_decoder:
         cti_scores = cti_scores[:-1]
         cti_tokens = cti_tokens[:-1]
-    print(f"cti tokens: {cti_tokens}")
-    print(f"cti scores: {cti_scores}")
+    #print(f"cti tokens: {cti_tokens}")
+    #print(f"cti scores: {cti_scores}")
     # For paligemma last token is \n generation -> Remove it from CTI for my experiments for now.
     if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-224' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
         cti_tokens = cti_tokens[:-1]
@@ -215,9 +215,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         std_threshold=args.context_sensitivity_std_threshold,
         topk=args.context_sensitivity_topk,
     )   
-    print(cti_ranked_tokens)
 
-    # NOSAVE
+    # YESSAVE
     import os
     # No need to change since these are only stored temporally to be read back by the model.
     # DEMETRA
@@ -369,7 +368,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             **cci_kwargs,
             **args.attribution_kwargs,
         )
-        print(f"cci_attrib_out:\n{cci_attrib_out}")
+        # print(f"cci_attrib_out:\n{cci_attrib_out}")
         # Below we extract the gradients that we're interested in. I believe it simply aggregates 
         #print(f"selectors: {args.attribution_selectors}") # None
         #print(f"aggregators: {args.attribution_aggregators}")  # None
@@ -381,7 +380,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             normalize_attributions=args.normalize_attributions,
         )[0]
         #print(f"cci_attrib_out:\n{cci_attrib_out}")
-        # print(f"cci_target_attributions:\n{cci_attrib_out.target_attributions}")
+        #print(f"cci_target_attributions:\n{cci_attrib_out.target_attributions}")
+        #print(f"Len cci target attributions: {len(cci_attrib_out.target_attributions)}")
         if args.show_intermediate_outputs:
             cci_attrib_out.show(do_aggregation=False)
         source_scores, target_scores = get_source_target_cci_scores(
@@ -399,7 +399,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             args.decoder_input_output_separator,
             args.special_tokens_to_keep,
         )
-        #print(f"source scores: {len(source_scores)}") # Should contain scors for the target tokens
+        #print(f"source scores: {len(source_scores)}\n{source_scores}") # Should contain scors for the target tokens
         #print(f"target scores: {target_scores}") # None for decoder only models
         cci_out = CCIOutput(
             cti_idx=cti_idx,
@@ -414,10 +414,12 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         if model.is_vlm:
             if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-pt-224':
                 cci_out.contextual_output =  '<img>' * 256 + cci_out.contextual_output
-                cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
+                if cci_out.contextless_output is not None:
+                    cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
             elif args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
                 cci_out.contextual_output =  '<img>' * 1024 + cci_out.contextual_output
-                cci_out.contextless_output =  '<img>' * 1024 + cci_out.contextless_output
+                if cci_out.contextless_output is not None:
+                    cci_out.contextless_output =  '<img>' * 1024 + cci_out.contextless_output
             else:
                 raise ValueError("At the moment model specific implementations work only for paligemma models.")
         output.cci_scores.append(cci_out)
@@ -460,7 +462,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                                 img_shape = img_shape, 
                                 patch_shape = patch_shape, 
                                 n_patches = n_patches,
-                                save=True) # YESSAVE: If this is False then only the img with the bboxes highlighted is saved
+                                save=True) # NOSAVE: If this is False then only the img with the bboxes highlighted is saved
     
     if args.context_image is not None:
         # Stop here for VLM as no point in showing from terminal.
