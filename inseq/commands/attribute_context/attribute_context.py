@@ -19,6 +19,14 @@ inseq attribute-context \
 
 PaliGemma-224
 python -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
+Leonardo path
+python3 -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-pt-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/test_image.png
+
+
+Leonardo path and use probability and not contrastive
+python3 -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/test_image.png
+
+
 
 PaliGemma-448
 python -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
@@ -58,13 +66,24 @@ logger = logging.getLogger(__name__)
 
 def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     """Attribute the generation of context-sensitive tokens in ``output_current_text`` to input/output contexts."""
-    # print(f"Loading model...")
+    import torch
+    print(f"Loading model... to device {'cuda' if torch.cuda.is_available() else 'cpu'}")
     model: HuggingfaceModel = load_model(
         args.model_name_or_path,
         args.attribution_method,
         model_kwargs=deepcopy(args.model_kwargs),
         tokenizer_kwargs=deepcopy(args.tokenizer_kwargs),
     )
+    print(f"Succesfully loaded model")
+    from transformers import PaliGemmaForConditionalGeneration
+    import torch
+    # DEMETRA
+    #pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    # LEONARDO
+    #pretrained_model_path = '/leonardo_work/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+    
     return attribute_context_with_model(args, model)
 
 
@@ -121,6 +140,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
     # Manually add \n 
     # TODO: Make it nicer and not manual
+    # TODO: This is probably only for PaliGemma
     if model.is_vlm:
         input_full_text = input_full_text.strip() + '\n'
         output_full_text = output_full_text[:len(input_full_text)-1].strip() + '\n' + output_full_text[len(input_full_text)-1:].strip()
@@ -145,9 +165,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
         formatted_input_current_text = formatted_input_current_text.strip() + '\n'
     #    output_full_text = formatted_output_current_text
-    #print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
-    #print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
-    #print(f"output full text: {repr(output_full_text)}")
+    # print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
+    # print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
+    # print(f"output full text: {repr(output_full_text)}")
+
     # Part 1: Context-sensitive Token Identification (CTI)
     #print(f"\n\nCTI")
     #print(f"model.attribute is called with the following parameters:")
@@ -185,7 +206,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     print(f"cti tokens: {cti_tokens}")
     print(f"cti scores: {cti_scores}")
     # For paligemma last token is \n generation -> Remove it from CTI for my experiments for now.
-    if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-mix-448':
+    if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-224' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
         cti_tokens = cti_tokens[:-1]
         cti_scores = cti_scores[:-1]
     cti_ranked_tokens, cti_threshold = filter_rank_tokens(
@@ -195,10 +216,14 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         topk=args.context_sensitivity_topk,
     )   
     print(cti_ranked_tokens)
-    # YESSAVE
+
+    # NOSAVE
     import os
     # No need to change since these are only stored temporally to be read back by the model.
-    cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    # DEMETRA
+    # cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    # LEONARDO
+    cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     os.makedirs(cti_scores_path, exist_ok=True)
     cti_scores_file = os.path.join(cti_scores_path, f"cti_scores.txt")
     with open(cti_scores_file, 'w') as f:
@@ -250,6 +275,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         cci_kwargs = {}
         contextless_output = None
         #print(f"args.attributed_fn: {args.attributed_fn}")  # Contains attributed_fn: in out case contrast_prob_diff
+        print(is_contrastive_step_function(args.attributed_fn))
         if args.attributed_fn is not None and is_contrastive_step_function(args.attributed_fn):
             #print(f"Using a contrastive step function:")
             if not model.is_encoder_decoder:
@@ -305,11 +331,11 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         pos_start = output_current_text_offset + cti_idx + bos_offset + int(has_lang_tag)
         # TODO: Fix pos_start in a nicer way than hard-coding it like here
         if model.is_vlm:
-            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-pt-224':
                 bos_offset = 1
                 img_tokens = 256
                 pos_start = pos_start + bos_offset + img_tokens
-            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
                 bos_offset = 1
                 img_tokens = 1024
                 pos_start = pos_start + bos_offset + img_tokens
@@ -386,10 +412,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         )
         # TODO: FA SCHIFO scritto cosi
         if model.is_vlm:
-            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-pt-224':
                 cci_out.contextual_output =  '<img>' * 256 + cci_out.contextual_output
                 cci_out.contextless_output =  '<img>' * 256 + cci_out.contextless_output
-            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
                 cci_out.contextual_output =  '<img>' * 1024 + cci_out.contextual_output
                 cci_out.contextless_output =  '<img>' * 1024 + cci_out.contextless_output
             else:
@@ -401,9 +427,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         #print(f"Target is: {cci_out.cti_token}")
 
         # Added save=False to avoid getting lost.
-        # NOSAVE
         if model.is_vlm:
-            if args.model_name_or_path == 'google/paligemma-3b-mix-224':
+            if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-pt-224':
                 img_shape = (224, 224)
                 patch_shape = (14, 14)
                 img_tokens = (img_shape[0] * img_shape[1]) / (patch_shape[0] * patch_shape[1])
@@ -412,7 +437,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 if n_patches_x != int(n_patches_x) or n_patches_y != int(n_patches_y):
                     raise ValueError("n_patches_x and n_patches_y assumed to be whole numbers (e.g., 32.0).")
                 n_patches = (int(n_patches_x), int(n_patches_y))
-            elif args.model_name_or_path == 'google/paligemma-3b-mix-448':
+            elif args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
                 img_shape = (448, 448)
                 patch_shape = (14, 14)
                 img_tokens = (img_shape[0] * img_shape[1]) / (patch_shape[0] * patch_shape[1])
@@ -427,7 +452,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                                 cci_scores = cci_out.input_context_scores, 
                                 cci_step_idx=cci_step_idx,
                                 target_word = cci_out.cti_token,
-                                save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
+                                # DEMETRA
+                                # save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
+                                # LEONARDO
+                                save_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/wildreceipts_results',
                                 args=args,
                                 img_shape = img_shape, 
                                 patch_shape = patch_shape, 

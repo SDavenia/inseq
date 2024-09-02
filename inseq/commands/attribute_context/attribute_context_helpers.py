@@ -447,9 +447,9 @@ def get_source_target_cci_scores(
         # print(f"model.vision_config.image_size: {model.config.image_size}") NON SO BENE DOVE STIA PER ORA CONFIG
         # TODO: TROVA MODO DI FARE QUA: model.config.image_size * model.config.image_size / (model.config.patch_size * model.config.path_size)
         print(model.model_name)
-        if model.model_name == 'google/paligemma-3b-mix-224':
+        if model.model_name == 'google/paligemma-3b-mix-224' or model.model_name == 'google/paligemma-3b-pt-224':
             input_scores = input_scores[0:256]
-        elif model.model_name == 'google/paligemma-3b-mix-448':
+        elif model.model_name == 'google/paligemma-3b-mix-448' or model.model_name == 'google/paligemma-3b-pt-448':
             input_scores = input_scores[0:1024]
         else:
             raise ValueError("At the moment model specific implementations work only for paligemma models.")

@@ -286,7 +286,7 @@ class FeatureAttribution(Registry):
         #print((f"Batch is: {batch}")                 # For CCI batch contains contextual objective, i.e. the input ids and embeddings for context + input + generation.
         if self.attribution_model.is_vlm:
             #print((f"Batch ids are: {repr([self.attribution_model.processor.decode(x) for x in batch.input_ids])}")
-        
+            pass
             # PaliGemma processor adds \n after being called, but remove it!
             # TODO: Do something nicer and add it to prepare_inputs_for_attribution!
             #print((f"{repr(self.attribution_model.processor.decode(batch.input_ids[0, -1]))}")
@@ -552,6 +552,7 @@ class FeatureAttribution(Registry):
         # CTI: Prepare sequences -> For unimodal LLMs sequence is input + generation (i.e. non contextual case / batch).
         # CCI:                   -> It is contextual generation 
         sequences = self.attribution_model.formatter.get_text_sequences(self.attribution_model, batch)
+        print(sequences)
         
         #print((f"Sequences: {sequences}")   # TODO: For VLM we have a \n too much at the end, check this later!
         #if cci == 1:
@@ -848,7 +849,7 @@ class FeatureAttribution(Registry):
             forward_batch_embeds=self.forward_batch_embeds,
             use_baselines=self.use_baselines,
         )
-        #print((f"Attribute_main_args:\n{attribute_main_args}")
+        # print((f"Attribute_main_args:\n{attribute_main_args}"))
         # CTI: Dictionary containing:
         #       inputs: embeddings of the non-contextual generation
         #       additional_forward_args: (input_ids, target_ids): tuple containing id of input so far + id of target token in this step.
