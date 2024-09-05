@@ -95,11 +95,11 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     import torch
     # TODO CHECK
     # DEMETRA
-    #pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    # pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
     # LEONARDO
-    pretrained_model_path = '/leonardo_scratch/fast/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+    # pretrained_model_path = '/leonardo_scratch/fast/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
 
     def save_image_temp(image):
         temp_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
@@ -114,15 +114,15 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
 
     # File where to save results
     model_name = re.search(r'[^/]+$', args.model_name_or_path).group(0)
-    contrastive_type_str = 'black' if args.attributed_fn == 'contrast_prob_diff' or 'kl_divergence' else 'None'
+    contrastive_type_str = 'black' if args.attributed_fn == 'contrast_prob_diff' or args.attributed_fn == 'kl_divergence' else 'None'
     ctistd_str = str(args.context_sensitivity_std_threshold) if args.context_sensitivity_std_threshold > -10 else 'all'
     ccistd_str = str(args.attribution_std_threshold) if args.attribution_std_threshold > -10 else 'all'
     # TODO FIX CHANGE
     # If there is NOT ft dataset
-    # base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
     # If there is a ft dataset
-    ft_df = 'wildreceipts_the_price_is'
-    base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    # ft_df = 'wildreceipts_the_price_is'
+    # base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
     save_steps = 300
     all_cti_tokens_list = []
     all_bboxes_list = []
@@ -140,8 +140,8 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     for idx, row in df.iterrows():
         args_row = dp(args)
         # CHECK TODO MODIFY FT
-        args_row.input_current_text = f"long answer: What is the price of {row['item'].strip()}"
-        # args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
+        # args_row.input_current_text = f"long answer: What is the price of {row['item'].strip()}"
+        args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
         # args_row.input_current_text = f"Describe this image."
         temp_img_path = save_image_temp(row['image'])       
         args_row.context_image_path=temp_img_path
