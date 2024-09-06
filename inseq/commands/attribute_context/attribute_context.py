@@ -71,9 +71,9 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     # TODO METTI IL DATASET GIUSTO
     base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
     # paligemma-3b-mix-224
-    # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
+    df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
     # paligemma-3b-pt-224 finetuned
-    df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-pt-224_wildreceipts_the_price_is.pkl").reset_index()
+    # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-pt-224_wildreceipts_the_price_is.pkl").reset_index()
     print(f"Loading model... to device {'cuda' if torch.cuda.is_available() else 'cpu'}")
     
     from PIL import Image
