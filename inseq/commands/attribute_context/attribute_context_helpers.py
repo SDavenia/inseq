@@ -110,14 +110,22 @@ def generate_with_special_tokens(
     input_context_image: Optional[PIL.Image.Image],
     special_tokens_to_keep: list[str] = [],
     output_generated_only: bool = True,
+    contextless_image: Optional[PIL.Image.Image] = None,
     **generation_kwargs,
 ) -> str:
     """Generate text preserving special tokens in ``special_tokens_to_keep``."""
     # Generate outputs, strip special tokens and remove prefix/suffix
-    print(f"Model input: {repr(model_input)}")
-    output_gen = model.generate(
-        model_input, input_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
-    )[0]
+    # print(f"Model input: {repr(model_input)}")
+    if contextless_image is not None:
+        print(f"Calling with contextless image and input: {repr(model_input)}")
+        output_gen = model.generate(
+            model_input, contextless_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
+        )[0]
+    else:
+        print(f"Calling with context image")
+        output_gen = model.generate(
+            model_input, input_context_image, skip_special_tokens=False, output_generated_only=output_generated_only, **generation_kwargs
+        )[0]
     output_tokens = get_filtered_tokens(output_gen, model, special_tokens_to_keep, is_target=True)
     return model.convert_tokens_to_string(output_tokens, skip_special_tokens=False)
 
@@ -351,8 +359,10 @@ def get_contextless_output(
     decoder_input_output_separator: str = " ",
     special_tokens_to_keep: list[str] = [],
     generation_kwargs: dict[str, Any] = {},
+    contextless_image: Optional[PIL.Image.Image] = None # Added for VLMs 
 ) -> tuple[str, str]:
     if model.is_vlm:
+        # TODO: MOdifica che questo viene hardcoded forse è questo dove mettere il famoso \n
         decoder_input_output_separator = ""
     n_ctxless_next_tokens = len(contextless_output_next_tokens)
     next_ctxless_token = None
@@ -372,7 +382,7 @@ def get_contextless_output(
         contextless_output_tokens = output_current_tokens[:cti_idx] + [next_ctxless_token]
         contextless_output = model.convert_tokens_to_string(contextless_output_tokens, skip_special_tokens=False)
     else:
-        # print(f"Generate contextless output with input: {repr(input_current_text)}")
+        print(f"Generate contextless output with input: {repr(input_current_text)}")
         contextless_output = generate_contextless_output(
             model,
             input_current_text,
@@ -381,6 +391,7 @@ def get_contextless_output(
             special_tokens_to_keep,
             generation_kwargs,
             decoder_input_output_separator,
+            contextless_image
         )
     return contextless_output
 
@@ -393,8 +404,10 @@ def generate_contextless_output(
     special_tokens_to_keep: list[str] = [],
     generation_kwargs: dict[str, Any] = {},
     decoder_input_output_separator: str = " ",
+    contextless_image: Optional[PIL.Image.Image] = None # Added for VLMs 
 ) -> tuple[str, str]:
     """Generate the contextless output for the current token identified as context-sensitive."""
+    # It appends to the input the output up to current token under cci.
     contextual_prefix_tokens = output_current_tokens[:cti_idx]
     contextual_prefix = model.convert_tokens_to_string(contextual_prefix_tokens, skip_special_tokens=False)
     if model.is_encoder_decoder:
@@ -408,12 +421,13 @@ def generate_contextless_output(
     else:
         generation_kwargs["max_new_tokens"] = 1
         generation_input = concat_with_sep(input_current_text, contextual_prefix, decoder_input_output_separator)
-    # print(f"Generating with generation_input: {generation_input}")
+    print(f"Generating with generation_input: {repr(generation_input)}")
     contextless_output = generate_with_special_tokens(
         model,
         generation_input,
         special_tokens_to_keep,
         output_generated_only=False,
+        contextless_image=contextless_image,
         **generation_kwargs,
     )
     return contextless_output

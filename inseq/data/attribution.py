@@ -66,6 +66,7 @@ def get_batch_from_inputs(
             )
         # Added because when getting here with CCI we have input ('Describe this image\nun', None) and check can cause an issue
         elif isinstance(inputs[0], (str, list)) and inputs[1] is None:
+            raise ValueError("SHOULD NOT BE GENERATING ANY BLACK IMAGE NOW")
             textual_inputs = inputs[0]
             import PIL
             # Generate black image
@@ -79,6 +80,7 @@ def get_batch_from_inputs(
         elif isinstance(inputs[0], (str, list)) and isinstance(inputs[1], ImageInput): # Check if input is a tuple (text, img) -> Means we are working with VLMs
             #print(f"Entering get_batch_from_inputs for VLMs.")
             textual_inputs, context_images = inputs
+            print(repr(textual_inputs))
             encodings: BatchEncoding = attribution_model.encode(
                 texts=textual_inputs,
                 context_images=context_images,
@@ -87,6 +89,7 @@ def get_batch_from_inputs(
             )
             #print(f"Encodings input ids are:\n\t{encodings.input_ids}")
             #print(f"When decoded they are: {[attribution_model.processor.decode(x) for x in encodings.input_ids[0]]}")
+            # print(f"Encodings now has pixel values: {encodings.pixel_values}")
             #raise ValueError("STOP HERE")
             # print(f"Encodings now has pixel values: {encodings.pixel_values}")
 

@@ -334,7 +334,7 @@ class AttributionModel(ABC, torch.nn.Module):
         skip_special_tokens: bool = False,
         generation_args: dict[str, Any] = {},
         cci=0,
-        **kwargs, # Includes context_image now!
+        **kwargs, # Includes context_image now but also contextless_image
     ) -> FeatureAttributionOutput:
         """Perform sequential attribution of input texts for every token in generated texts using the specified method.
 
@@ -397,9 +397,10 @@ class AttributionModel(ABC, torch.nn.Module):
         """
         #print(f"Calling attribute from inseq.models.attribution_model.py")
         # CAPIRE DOVE QUESTA SIA STATA INFILATA!
-        #if cci==1:
-        #    #print(f"kwargs: {kwargs}")
-        #    #print(f"kwargs cci_context_image: {kwargs['cci_context_image']}")
+        if cci==1:
+            print(f"kwargs: {kwargs}")
+            print(f"kwargs cci_context_image: {kwargs['cci_context_image']}")
+            print(f"kwargs cci_contextless_image: {kwargs['cci_contextless_image']}")            
         
         ##print(f"Attribution pos start is: {attr_pos_start}")
         #if cci==1:
@@ -423,9 +424,9 @@ class AttributionModel(ABC, torch.nn.Module):
         # Define the attributed function (it is a callable function)
         attributed_fn = self.get_attributed_fn(attributed_fn)
         #print(f"Attribution_method: {attribution_method}") # For CTI: Dummy
-                                                           # For CCI: Saliency
+                                                            # For CCI: Saliency
         #print(f"Attribution_function: {attributed_fn}")    # For CTI: probability_fn
-                                                           # For CCI: contrast_prob_diff_fn
+                                                            # For CCI: contrast_prob_diff_fn
         if skip_special_tokens:
             kwargs["skip_special_tokens"] = True
         # #print(f"get_step_function_reserved_args:\n{self.formatter.get_step_function_reserved_args()}\n\n")
@@ -434,19 +435,21 @@ class AttributionModel(ABC, torch.nn.Module):
             attribution_method,
             attributed_fn,
             step_scores,
-            default_args=self.formatter.get_step_function_reserved_args(), # Now default_args should include context image for VLMs
+            default_args=self.formatter.get_step_function_reserved_args(), # Now default_args should include context image for VLMs + contextless image
             **kwargs,
         )
         # #print(f"Step scores args after:\n {step_scores_args}") # Check that it includes context image
         # CTI
         ##print(f"attribution_args: {attribution_args}")      # Empty
         ##print(f"attributed_fn_args: {attributed_fn_args}")  # Empty
-        ##print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text)
+        ##print(f"step_scores_args: {step_scores_args}")      # CONTAINS INFORMATION ON CONTRAST TARGETS (I.E. context + input + text) and image for contextless case.
         # CCI
         #print(f"attribution_args: {attribution_args}")      # Empty
-        #print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) which for CCI is the contextless one. Additionally stores that contrast_force_inputs: True
+        #if cci==1:
+        #    print(f"attributed_fn_args: {attributed_fn_args}")  # Contains informaion on contrast target (I.e. input + generation) which for CCI is the contextless one. Additionally stores that contrast_force_inputs: True
         #print(f"step_scores_args: {step_scores_args}")      # Empty
-                                                            # For VLM added cci_context_image
+                                                             # For VLM added cci_context_image and cci_contextless image.
+        
         if isnotebook():
             logger.debug("Pretty progress currently not supported in notebooks, falling back to tqdm.")
             pretty_progress = False
@@ -517,9 +520,12 @@ class AttributionModel(ABC, torch.nn.Module):
         if attribution_method.method_name == "lime":
             logger.warning("Batched attribution currently not supported for LIME. Using batch size of 1.")
             batch_size = 1
-        # Actual attribution process 
+        #Actual attribution process 
         #print(f"input_texts: {repr(input_texts)}")
         #print(f"generated_texts: {repr(generated_texts)}")
+        #if cci == 1:
+        #    print(f"Step scores args: {step_scores_args}")                  # TODO NOW: Check if here there is cci_contextless image during cci.
+        #    raise ValueError("STOP HERE")
         attribution_outputs = attribution_method.prepare_and_attribute(
             input_texts,
             generated_texts,
@@ -537,7 +543,7 @@ class AttributionModel(ABC, torch.nn.Module):
             attributed_fn=attributed_fn,
             attribution_args=attribution_args,
             attributed_fn_args=attributed_fn_args,
-            step_scores_args=step_scores_args,  # CTI: context_image should be included here.
+            step_scores_args=step_scores_args,  # CTI: context_image should be included here. + also contextless image
                                                 # CCI: cci_context_image should be included here.
         )
         #if cci == 1:

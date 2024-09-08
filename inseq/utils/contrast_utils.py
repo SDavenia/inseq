@@ -62,10 +62,11 @@ def _get_contrast_inputs(
     contrast_sources: Optional[FeatureAttributionInput] = None,
     contrast_targets: Optional[FeatureAttributionInput] = None,
     contrast_targets_alignments: Optional[list[list[tuple[int, int]]]] = None,
-    context_image = None,
+    context_image = None,                                                       # Questa di fatto prima non veniva mai usata perchè avevo la black per fare il contrastive
     return_contrastive_target_ids: bool = False,
     return_contrastive_batch: bool = False,
     skip_special_tokens: bool = False,
+    contextless_image = None,
     **forward_kwargs,
 ) -> ContrastInputs:
     """Utility function to return the output of the model for given contrastive inputs.
@@ -78,20 +79,43 @@ def _get_contrast_inputs(
     # print(f"Calling _get_contrast_inputs")
     # print(f"Inside _get_contrast_inputs: context image is: {context_image}") IT IS HERE
     c_tgt_ids = None
+    # print(f"CALLING _GET_CONTRAST_INPUTS with args:\n\n{args}")
+    print(f"Context image is: {context_image}")
+    print(f"Contextless image is: {contextless_image}")
     is_enc_dec = args.attribution_model.is_encoder_decoder
+    #stop=0
     if contrast_targets:
         if args.attribution_model.is_vlm:
-            c_batch = DecoderOnlyBatch.from_batch(
-                get_batch_from_inputs(
-                    attribution_model=args.attribution_model,
-                    inputs=(contrast_targets, context_image),
-                    as_targets=is_enc_dec,
-                    skip_special_tokens=skip_special_tokens,
-                )
-            ).to(args.decoder_input_ids.device)
+            if context_image is None and contextless_image is None:
+                import PIL
+                # HORRIBLE HORRIBLE CODE FIX TODO MODIFY THIS
+                contextless_image=PIL.Image.open('contextless_temp_img.png')
+                #print(contrast_targets)
+                #print(len(contrast_targets))
+                print(f"Contextless image is: {contextless_image}")
+                c_batch = DecoderOnlyBatch.from_batch(
+                    get_batch_from_inputs(
+                        attribution_model=args.attribution_model,
+                        inputs=(contrast_targets, contextless_image),
+                        as_targets=is_enc_dec,
+                        skip_special_tokens=skip_special_tokens,
+                    )
+                ).to(args.decoder_input_ids.device)
+                # print(f"c_batch is:\n{c_batch}")
+                #print(f"c_batch encodings:\n{c_batch.encoding.input_ids}")
+                #print(f"Decoded:\n {[args.attribution_model.processor.decode(x) for x in c_batch.encoding.input_ids[0][255:]]}")
+                #stop=1
+            else:
+                c_batch = DecoderOnlyBatch.from_batch(
+                    get_batch_from_inputs(
+                        attribution_model=args.attribution_model,
+                        inputs=(contrast_targets, context_image),
+                        as_targets=is_enc_dec,
+                        skip_special_tokens=skip_special_tokens,
+                    )
+                ).to(args.decoder_input_ids.device)
             #print(f"c_batch has embeddings: {c_batch.input_embeds[0, 5, :10]}")
             # raise ValueError("STOP HERE")
-            print(f"Succesfully prepared c_batch: {c_batch}") # Now it is for the whole input
         else:
             c_batch = DecoderOnlyBatch.from_batch(
                 get_batch_from_inputs(
@@ -103,6 +127,11 @@ def _get_contrast_inputs(
             ).to(args.decoder_input_ids.device)
         curr_prefix_len = args.decoder_input_ids.size(1)
         c_batch, c_tgt_ids = slice_batch_from_position(c_batch, curr_prefix_len, contrast_targets_alignments) # sliced based on position
+        # Now c_batch contains the target up to current generation being investigated (not included)
+        #print(f"After slicing:")
+        #print(f"c_batch is:\n{c_batch}")
+        #print(f"c_batch encodings:\n{c_batch.encoding.input_ids}")
+        #print(f"Decoded:\n {[args.attribution_model.processor.decode(x) for x in c_batch.encoding.input_ids[0][255:]]}")
         if args.decoder_input_ids.size(0) != c_batch.target_ids.size(0):
             raise ValueError(
                 f"Contrastive batch size ({c_batch.target_ids.size(0)}) must match candidate batch size"
@@ -175,7 +204,8 @@ def _setup_contrast_args(
                 "set --contrast_force_inputs to True to use the contrastive inputs for attribution instead.",
                 stacklevel=1,
             )
-    use_original_output = args.is_attributed_fn and not contrast_force_inputs
+    use_original_output = args.is_attributed_fn and not contrast_force_inputs # In our case no since different generation
+    print(f"Use original output: {use_original_output}")
     if use_original_output:
         forward_output = args.forward_output
     else:

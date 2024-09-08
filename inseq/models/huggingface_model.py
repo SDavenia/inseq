@@ -639,6 +639,10 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
             # print(f"Texts is: {texts}")
             # https://stackoverflow.com/questions/76130589/what-is-the-function-of-the-text-target-parameter-in-huggingfaces-autotokeni
             # To clear difference between text and text_target
+            # TODO: Awful fix specific for PaliGemma.
+            if texts[-1] == '\n':
+                print(f"Careful")
+                texts = texts[:-1]
             batch = self.processor(
                 text=texts,
                 images=context_images,
@@ -798,15 +802,30 @@ class HuggingfaceVLMModel(HuggingfaceModel, VLMAttributionModel):
             generation outputs.
         """
         # Added for CCI when called from generate_contextual and there is no image -> Add a black one.
+        # print(context_images)
+
         if context_images is None or isinstance(context_images, list):
+            raise ValueError(f"SHOULD NOT ENTER HERE AS NOW WE USE args.contextless_image now.")
             from PIL import Image
             print(f"Adding black image manually in model.generate")
             context_images = Image.new("RGB", (224, 224), (0, 0, 0))
             
-        if isinstance(inputs, str) or (isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)
-        ):
-            inputs = self.encode(inputs, context_images, add_special_tokens=not skip_special_tokens)
-            # print(f"Encoded inputs ids are: {inputs.input_ids}")
+        if isinstance(inputs, str) or (isinstance(inputs, list) and len(inputs) > 0 and all(isinstance(x, str) for x in inputs)):
+            no_add = 0
+            # TODO FIND A DIFF WAY TO DO THIS: Basicallly if \n is already in the sentence we assume that we have already begun generating the answer and so there is not need to add again.
+            # print(f"Inputs: {repr(inputs)}")
+            # Do not remove if the input endsiwth \n cause otherwise issues as it is handled directly inside encode.
+            if '\n' in inputs and not inputs.endswith('\n'):
+                # print(f"Already began the generation so no need to add another one")
+                no_add = 1
+            # Encode addds \n at the end. However if we already have \n the new \n is appended and the token becomes \n\n instead of \n \n which we then remove -> Fix it
+            inputs = self.encode(inputs, context_images, add_special_tokens=not skip_special_tokens) # Why do we get \n\n here?
+            # For some reason the input "'What is the price of lamb shank?\n'" is encoded as "'What is the price of lamb shank?\n\n'"
+            # print(f"Encoded inputs decoded before are: {[self.processor.decode(x, skip_special_tokens=False) for x in inputs.input_ids[0]]}")
+            if no_add == 1:
+                inputs.input_ids = inputs.input_ids[:, :-1]
+                inputs.attention_mask = inputs.attention_mask[:, :-1]
+            # print(f"Encoded inputs decoded are: {[self.processor.decode(x, skip_special_tokens=False) for x in inputs.input_ids[0]]}")
         inputs = inputs.to(self.device)
         # Calls generate method of the original model on which we are performing attribution (like PaliGemma for example).
         generation_out = self.model.generate(

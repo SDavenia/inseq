@@ -39,7 +39,7 @@ class VLMInputFormatter(InputFormatter):
     @staticmethod
     def prepare_inputs_for_attribution( 
         attribution_model: "VLMAttributionModel",
-        inputs: FeatureAttributionInput, # FOR VLM INPUTS IS A TUBLE (str, image)
+        inputs: FeatureAttributionInput, # FOR VLM INPUTS IS A TUPLE (str, image)
         include_eos_baseline: bool = False,
         skip_special_tokens: bool = False,
     ) -> DecoderOnlyBatch:
@@ -57,14 +57,18 @@ class VLMInputFormatter(InputFormatter):
         # - list containing a string -> We're doing CTI and add black image!
         # - (list containing a string, image) -> We're doing CCI!
 
+        # Updated: Inputs can be:
+        # - a tuple containing (string, image) where image can either be the full image or the contrastive image.
+
         # Need to add black image
         if not isinstance(inputs, tuple):
+            raise ValueError("SHOULD NOT ENTER HERE NOW WE ARE USING CONTEXTLESS IMAGE.")
             black_image = PIL.Image.new("RGB", (100, 100), (0, 0, 0)) # Generate black image and pass it.
             inputs = (inputs, black_image)
         # print(f"inputs inside: {repr(inputs[0][0])}") Here additional \n is not present
         batch = get_batch_from_inputs(
             attribution_model,
-            inputs=inputs, # To be called here inputs should be (textual_input, context_image) where textual input is a list of strings
+            inputs=inputs, # To be called here inputs should be (textual_input, image) where textual input is a list of strings and image can either be the context or the contextless image
             include_eos_baseline=include_eos_baseline,
             as_targets=False,
             skip_special_tokens=skip_special_tokens,
@@ -160,6 +164,7 @@ class VLMInputFormatter(InputFormatter):
             decoder_attention_mask=batch.target_mask,
             decoder_input_embeds=batch.target_embeds,
             context_image=None,
+            contextless_image=None
             # context_image=transforms.ToPILImage(mode='RGB')(batch.encoding.pixel_values[0])
         )
 

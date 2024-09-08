@@ -118,6 +118,23 @@ class AttributeContextInputArgs:
             "The array should contain pixel values."
         )
     )
+    blacken_bbox_coord: Optional[list[float]] = cli_arg(
+        default=None,
+        help=(
+            "If specified for contrastive type the image with a black bounding box in this part is considered."
+            "It should be passed as a list of 8 float coordinates representing (x, y) for bl, tl, tr, br"
+        ),
+    )
+    contextless_image: Optional[PIL.Image.Image] = cli_arg(
+        default=None,
+        help=(
+            "The image stored as a numpy array of dimension (height, width, channels). "
+            "It is the image to be used for the contextless generation and attributions."
+        )
+    )
+
+    
+    
     
 
 

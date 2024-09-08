@@ -69,6 +69,7 @@ class StepFunctionEncoderDecoderArgs(StepFunctionBaseArgs):
 @dataclass
 class StepFunctionVLMArgs(StepFunctionBaseArgs):
     context_image: ImageInput
+    contextless_image: ImageInput
 
 @dataclass
 class StepFunctionDecoderOnlyArgs(StepFunctionBaseArgs):
@@ -98,6 +99,11 @@ def probability_fn(args: StepFunctionArgs, logprob: bool = False) -> SingleScore
     """Compute the probabilty of target_ids from the model's output logits."""
     logits = args.attribution_model.output2logits(args.forward_output)
     target_ids = args.target_ids.reshape(logits.shape[0], 1).to(logits.device)
+    print(f"Computing probability on target id: {target_ids}")
+    print(f"This is: {args.attribution_model.processor.decode(target_ids[0][0])}")
+    import torch
+    print(logits.shape)
+    print(f"The argmax is {torch.argmax(logits, dim=-1)}")
     logits = logits.softmax(dim=-1) if not logprob else logits.log_softmax(dim=-1)
     # Extracts the ith score from the softmax output over the vocabulary (dim -1 of the logits)
     # where i is the value of the corresponding index in target_ids.
@@ -170,6 +176,14 @@ def contrast_prob_fn(
     context. The probability for the same token given contrastive source/target preceding context can also be computed
     using ``contrast_sources`` without specifying ``contrast_targets``.
     """
+    #print(f"Calling contrast_prob_fn with args:")
+    #print(f"Args:")                         # Contains the current state of the model with args etc...
+    #print(f"Contrast sources:\n{contrast_sources}\n\n")
+    #print(f"Contrast targets:\n{contrast_targets}")
+    #print(f"Args logits have shape:\n{args.forward_output.logits.shape}")
+    #print(f"Contrast sources:\n{contrast_sources}\n\n")
+    #print(f"Contrast targets:\n{contrast_targets}")
+    #print(f"contrast_targets_alignments:\n{contrast_targets_alignments}")
     c_args = _setup_contrast_args(
         args,
         contrast_sources=contrast_sources,
@@ -178,6 +192,7 @@ def contrast_prob_fn(
         contrast_force_inputs=contrast_force_inputs,
         skip_special_tokens=skip_special_tokens,
     )
+    #print(f"Now c_args:\n{c_args}\n\n")
     return probability_fn(c_args, logprob=logprob)
 
 
@@ -332,7 +347,10 @@ def contrast_prob_diff_fn(
     difference in probability for the same token given contrastive source/target preceding context using
     ``contrast_sources`` without specifying ``contrast_targets``.
     """
+    print(f"Calling contrast_prob_diff_fn")
+    print(f"computing probability on batch:")
     model_probs = probability_fn(args, logprob=logprob)
+    print(f"Computing probability with contrastive batch")
     contrast_probs = contrast_prob_fn(
         args=args,
         contrast_sources=contrast_sources,
@@ -342,6 +360,8 @@ def contrast_prob_diff_fn(
         contrast_force_inputs=contrast_force_inputs,
         skip_special_tokens=skip_special_tokens,
     ).to(model_probs.device)
+    print(f"model probs is: {model_probs}")
+    print(f"contrast probs is: {contrast_probs}")
     return model_probs - contrast_probs
 
 

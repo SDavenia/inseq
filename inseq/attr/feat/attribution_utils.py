@@ -146,8 +146,12 @@ def extract_args(
     # Add context_image manually to step_scores_args
     if 'context_image' in kwargs and kwargs['context_image'] is not None:
         step_scores_args['context_image'] = kwargs['context_image']
+    if 'contextless_image' in kwargs and kwargs['contextless_image'] is not None:
+        step_scores_args['contextless_image'] = kwargs['contextless_image']
     if 'cci_context_image' in kwargs and kwargs['cci_context_image'] is not None:
         step_scores_args['cci_context_image'] = kwargs['cci_context_image']
+    if 'cci_contextless_image' in kwargs and kwargs['cci_contextless_image'] is not None:
+        step_scores_args['cci_contextless_image'] = kwargs['cci_contextless_image']
 
     return attribution_args, attributed_fn_args, step_scores_args
 

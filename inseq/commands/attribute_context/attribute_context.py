@@ -24,7 +24,7 @@ python3 -m inseq.commands.cli attribute-context --input_current_text "Describe t
 
 
 Leonardo path and use probability and not contrastive
-python3 -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/test_image.png
+python3 -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/test_image.png
 
 
 
@@ -65,6 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
+    # python3 -m inseq.commands.cli attribute-context --input_current_text "What is the price of lamb shank" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-pt-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/receipt.png --blacken_bbox_coord 0 0 0 100 100 100 100 0
     """Attribute the generation of context-sensitive tokens in ``output_current_text`` to input/output contexts."""
     import torch
     print(f"Loading model... to device {'cuda' if torch.cuda.is_available() else 'cpu'}")
@@ -101,6 +102,35 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             raise ValueError("Using a VLM requires an image to be passed as input.")
         if not args.context_image:
             args.context_image = transformers.image_utils.load_image(args.context_image_path)
+            # If a blacken_bbox is specified then the contrastive type is assumed to be blackened_image where the specified patch is blackened.
+            if args.blacken_bbox_coord:
+                # Check that the part required to be blackened fits.
+                if len(args.blacken_bbox_coord) != 8:
+                    raise ValueError("Input needs to be a list of 8 numbers")
+                x_shape = args.context_image.size[0]
+                y_shape = args.context_image.size[1]
+                if any(coord < 0 or coord > x_shape for coord in [args.blacken_bbox_coord[0], args.blacken_bbox_coord[2], args.blacken_bbox_coord[4], args.blacken_bbox_coord[6]]):
+                    raise ValueError("asking to blacken more than the whole image horizontally")
+                if any(coord < 0 or coord > x_shape for coord in [args.blacken_bbox_coord[1], args.blacken_bbox_coord[3], args.blacken_bbox_coord[5], args.blacken_bbox_coord[7]]):
+                    raise ValueError("asking to blacken more than the whole image vertically")
+                # Prepare
+                blackened_image = deepcopy(args.context_image)
+                pixels = blackened_image.load() # create the pixel map
+                for i in range(blackened_image.size[0]): # for every pixel:
+                    for j in range(blackened_image.size[1]):
+                        if i > args.blacken_bbox_coord[0] and i < args.blacken_bbox_coord[6] and j > args.blacken_bbox_coord[1] and j < args.blacken_bbox_coord[5]:
+                            # change to black
+                            pixels[i,j] = (0, 0 ,0)
+                
+                """# TODO RIMUOVI REMOVE SERVE SOLO PER I TEST.
+                print(f"SETTING ALL PIXELS TO WHITE FOR TRIAL")
+                for i in range(blackened_image.size[0]):
+                    for j in range(blackened_image.size[1]):
+                        pixels[i, j] = (0, 0, 0)"""
+
+            args.contextless_image = blackened_image
+            blackened_image.save('contextless_temp_img.png')
+
     #print(f"Preparing input/output (generate if necessary)")
     #print(f"    Calling format_template on the input")
     # input_full_text = input_context_text + input_current_text
@@ -160,11 +190,14 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         formatted_output_current_text = formatted_input_current_text + formatted_output_current_text
 
     # Manually add \n between input and model generation (PaliGemma processor does it, but it seems to get lost in the processing above)
+    # This newline token is an essential part of the input prompt the model was trained with, so adding it explicitly ensures it's always there. (https://github.com/huggingface/blog/blob/main/paligemma.md)
+    # print(repr(formatted_output_current_text))
     # TODO: Make it nicer and not manual.
     if model.is_vlm:
         formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
         formatted_input_current_text = formatted_input_current_text.strip() + '\n'
-    #    output_full_text = formatted_output_current_text
+    # print(repr(print(formatted_output_current_text)))
+    # output_full_text = formatted_output_current_text
     # print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
     # print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
     # print(f"output full text: {repr(output_full_text)}")
@@ -188,6 +221,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         show_progress=False,
         method="dummy",
         context_image = args.context_image, # Now it is a kwarg specific for VLM models (in the definition)
+        contextless_image = args.contextless_image
     )[0]
     if args.show_intermediate_outputs:
         # print(f"SHOWING THEM")
@@ -203,8 +237,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     if model.is_encoder_decoder:
         cti_scores = cti_scores[:-1]
         cti_tokens = cti_tokens[:-1]
-    #print(f"cti tokens: {cti_tokens}")
-    #print(f"cti scores: {cti_scores}")
+    print(f"cti tokens: {cti_tokens}")
+    print(f"cti scores: {cti_scores}")
     # For paligemma last token is \n generation -> Remove it from CTI for my experiments for now.
     if args.model_name_or_path == 'google/paligemma-3b-mix-224' or args.model_name_or_path == 'google/paligemma-3b-mix-448' or args.model_name_or_path == 'google/paligemma-3b-pt-224' or args.model_name_or_path == 'google/paligemma-3b-pt-448':
         cti_tokens = cti_tokens[:-1]
@@ -216,8 +250,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         topk=args.context_sensitivity_topk,
     )   
 
-    # YESSAVE
-    import os
+
+    # NOSAVE
+    """import os
     # No need to change since these are only stored temporally to be read back by the model.
     # DEMETRA
     # cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
@@ -228,7 +263,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     with open(cti_scores_file, 'w') as f:
         for item in cti_ranked_tokens:
             score = item[1]
-            f.write(f"{score}\n")
+            f.write(f"{score}\n")"""
 
     output = AttributeContextOutput(
         input_context=args.input_context_text,
@@ -290,6 +325,8 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             #print(f"Calling get_contextless_output with:")
             #print(f"    formatted_input_current_text: {repr(formatted_input_current_text)}")
             #print(f"    output_current_tokens: {repr(output_current_tokens)}") # Contains full output
+
+            # TODO: Need to find a way to pass the contexless image.
             contextless_output = get_contextless_output(    # Ends up calling model generate with only input (for VLM ENSURE black image is passed here in some way, since probs you are passing the image itself.)
                 model,
                 formatted_input_current_text,    # His colleagues asked him how (input only)
@@ -303,19 +340,28 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 args.decoder_input_output_separator,
                 args.special_tokens_to_keep,
                 deepcopy(args.generation_kwargs),
+                args.contextless_image
             )
-            #print(f"Formatted input current text: {repr(formatted_input_current_text)}")
-            if "\n\n" in contextless_output:
+            print(f"HERE")
+            print(f"Formatted input current text: {repr(formatted_input_current_text)}")
+            # TODO: RIMUOVI HARDOCDED
+            # TODO: PRoverei a modificare con if \n\n in contextless_output and not contextless_output.endswith('\n\n)
+            if "\n\n" in contextless_output: 
+                print(f"SOMETHING WRONG YOU HAVE DOUBLE \\n\\n")
                 contextless_output = contextless_output.replace('\n\n', '\n')
-            #print(f"Contextless output: {repr(contextless_output)}") # String containing generation without context.
-                                                               # For unimodal example it appears to be the same as contextual case.
-                                                               # For VLM model it is Describe this image\nun 
+            
+            print(f"Contextless output: {repr(contextless_output)}") # String containing generation without context.
+                                                                     # For unimodal example it appears to be the same as contextual case.
+                                                                     # For VLM model it is Describe this image\nun 
             cci_kwargs["contrast_sources"] = formatted_input_current_text if model.is_encoder_decoder else None
             cci_kwargs["contrast_targets"] = contextless_output
             output_ctxless_tokens = model.convert_string_to_tokens(
                 contextless_output, skip_special_tokens=False, as_targets=model.is_encoder_decoder
             )
-            tok_pos = -2 if model.is_encoder_decoder else -1
+            tok_pos = -2 if model.is_encoder_decoder else -1       
+            #print(f"output_ctx_tokens: {repr(output_ctx_tokens)}")           # Next token when generating with context (for VLM con)
+            #print(f"output_ctxless_tokens: {repr(output_ctxless_tokens)}")   # Next token when generating without contextless (for VLM un)
+            #print(f"Now only the other")
             #print(f"output_ctx_tokens: {repr(output_ctx_tokens[tok_pos])}")           # Next token when generating with context (for VLM con)
             #print(f"output_ctxless_tokens: {repr(output_ctxless_tokens[tok_pos])}")   # Next token when generating without contextless (for VLM un)
 
@@ -341,10 +387,12 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             else:
                 raise ValueError("At the moment model specific implementations work only for paligemma models.")
 
+        print(f"Starting attribution from pos_start: {pos_start}")
         # Add context image to cci_kwargs        
         # Need to find a way to pass image but not in the same way as before as we need it for batch and not for contrast_batch.
         if model.is_vlm:
             cci_kwargs['cci_context_image'] = args.context_image
+            cci_kwargs['cci_contextless_image'] = args.contextless_image # NOT REALLY SURE IF NEEDEDDD
             
         #print(f"Calling model attribute with:")
         #print(f"    Contextual input: {repr(contextual_input)}")    # context + input
