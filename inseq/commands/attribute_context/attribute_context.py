@@ -68,24 +68,188 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     # python3 -m inseq.commands.cli attribute-context --input_current_text "What is the price of lamb shank" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-pt-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/receipt.png --blacken_bbox_coord 0 0 0 100 100 100 100 0
     """Attribute the generation of context-sensitive tokens in ``output_current_text`` to input/output contexts."""
     import torch
+    import pandas as pd
+    # TODO METTI IL DATASET GIUSTO
+    base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    # paligemma-3b-mix-224
+    df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
+    # paligemma-3b-pt-224 finetuned
+    # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-pt-224_wildreceipts_the_price_is.pkl").reset_index()
     print(f"Loading model... to device {'cuda' if torch.cuda.is_available() else 'cpu'}")
+    
+    from PIL import Image
+    import tempfile
+    from copy import deepcopy as dp
+    import os
+    import re
+    # input_current_text
+    # context_image_path
     model: HuggingfaceModel = load_model(
         args.model_name_or_path,
         args.attribution_method,
         model_kwargs=deepcopy(args.model_kwargs),
         tokenizer_kwargs=deepcopy(args.tokenizer_kwargs),
     )
+    # FOR LOADING PRETRAINED MODEL INSTEAD
     print(f"Succesfully loaded model")
     from transformers import PaliGemmaForConditionalGeneration
     import torch
+    # TODO CHECK
     # DEMETRA
-    #pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    # pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
     # LEONARDO
-    #pretrained_model_path = '/leonardo_work/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    #model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+    # pretrained_model_path = '/leonardo_scratch/fast/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+
+    def save_image_temp(image):
+        temp_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        image.save(temp_file, format="JPEG")
+        temp_file.close()
+        return temp_file.name
     
+    # Files where temp are saved
+    cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    cci_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cci_scores'
+    bboxes_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/bboxes'
+
+    # File where to save results
+    model_name = re.search(r'[^/]+$', args.model_name_or_path).group(0)
+    contrastive_type_str = 'black' if args.attributed_fn == 'contrast_prob_diff' or args.attributed_fn == 'kl_divergence' else 'None'
+    ctistd_str = str(args.context_sensitivity_std_threshold) if args.context_sensitivity_std_threshold > -10 else 'all'
+    ccistd_str = str(args.attribution_std_threshold) if args.attribution_std_threshold > -10 else 'all'
+    # TODO FIX CHANGE
+    # If there is NOT ft dataset
+    base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    # If there is a ft dataset
+    # ft_df = 'wildreceipts_the_price_is'
+    # base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    save_steps = 300
+    all_cti_tokens_list = []
+    all_bboxes_list = []
+    all_cci_scores_list = []
+    all_cti_scores_list = []
+
+    # For temporary saves
+    temp_save_counter = 0
+    temp_cti_tokens_list = []
+    temp_bboxes_list = []
+    temp_cci_scores_list = []
+    temp_cti_scores_list = []
+
+    # Restart from where you finished before and finish running -> Just have to save last one
+    for idx, row in df.iterrows():
+        args_row = dp(args)
+        # CHECK TODO MODIFY FT
+        # args_row.input_current_text = f"long answer: What is the price of {row['item'].strip()}"
+        args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
+        # args_row.input_current_text = f"Describe this image."
+        temp_img_path = save_image_temp(row['image'])       
+        args_row.context_image_path=temp_img_path
+        #args_row.context_image_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/dog.jpg'
+        
+        print(args_row.attributed_fn)
+        attribute_context_with_model(args_row, model)
+
+        # Lists to store words, bounding boxes and cci_scores
+        cti_tokens_list = []
+        bboxes_list = []
+        cci_scores_list = []
+            
+        # Extract words names and bboxes.
+        for file_name in os.listdir(bboxes_path):
+            if file_name.endswith('_bboxes.txt'):
+                # Extract the word from the filename
+                #word = file_name.split('_bboxes.txt')[0]
+                word = re.search(r"step\d+_(.*?)_bboxes.txt", file_name).group(1)
+                cti_tokens_list.append(word)
+
+                # Full path to the file
+                bboxes_file_path = os.path.join(bboxes_path, file_name)
+
+                # List to store bounding boxes for the current file
+                current_bboxes = []
+
+                # Open and read the file content
+                with open(bboxes_file_path, 'r') as file:
+                    for line in file:
+                        # Convert the bounding box string into a list of integers
+                        bbox = list(map(int, line.strip().split(',')))
+                        current_bboxes.append(bbox)
+
+                # Append the list of bounding boxes for this word to bboxes_list
+                bboxes_list.append(current_bboxes)
+                # Delete the file after processing
+                os.remove(bboxes_file_path)
+        # Repeat for cci_scores
+        for file_name in os.listdir(cci_scores_path):
+            if file_name.endswith('cci_scores.txt'):
+                cci_scores_file_path = os.path.join(cci_scores_path, file_name)
+
+                # List to store bounding boxes for the current file
+                current_cci_scores = []
+
+                # Open and read the file content
+                with open(cci_scores_file_path, 'r') as file:
+                    for line in file:
+                        # Convert the bounding box string into a list of integers
+                        score = line.strip()
+                        current_cci_scores.append(score)
+
+                # Append the list of bounding boxes for this word to bboxes_list
+                cci_scores_list.append(current_cci_scores)
+
+                # Delete the file after processing
+                os.remove(cci_scores_file_path) 
+        # Extract cti_scores from the saved file and remove the file.
+        for file_name in os.listdir(cti_scores_path):
+            cti_scores_file_path = os.path.join(cti_scores_path, file_name)
+            current_cti_scores = []
+            with open(cti_scores_file_path, 'r') as file:
+                for line in file:
+                    score = line.strip()
+                    current_cti_scores.append(score)
+            cti_scores_list = current_cti_scores
+            os.remove(cti_scores_file_path)
+        
+        # lists with all
+        all_cti_tokens_list.append(cti_tokens_list)
+        all_cti_scores_list.append(cti_scores_list)
+        all_bboxes_list.append(bboxes_list)
+        all_cci_scores_list.append(cci_scores_list)
+        # lists with temporary saves
+        temp_cti_tokens_list.append(cti_tokens_list)
+        temp_cti_scores_list.append(cti_scores_list)
+        temp_bboxes_list.append(bboxes_list)
+        temp_cci_scores_list.append(cci_scores_list)
+        if (idx + 1) % save_steps == 0:
+            df_temp = pd.DataFrame({
+                'cti_tokens': temp_cti_tokens_list,
+                'cti_scores': temp_cti_scores_list,
+                'bboxes': temp_bboxes_list,
+                'cci_scores': temp_cci_scores_list
+            })
+            # Reset
+            temp_cti_tokens_list = []
+            temp_bboxes_list = []
+            temp_cci_scores_list = []
+            temp_cti_scores_list = []
+            # Save 
+            temp_csv_path = f"{base_save_path}_temp_df_{temp_save_counter}.csv"
+            print(temp_csv_path)
+            df_temp.to_csv(temp_csv_path, index=False)
+            temp_save_counter += 1
+    df['cti_tokens'] = all_cti_tokens_list
+    df['cti_scores'] = all_cti_scores_list
+    df['bboxes'] = all_bboxes_list
+    df['cci_scores'] = all_cci_scores_list
+    
+    final_df_path = f"{base_save_path}.pkl"
+    df.to_pickle(final_df_path)
+    print(f"Saved to: {final_df_path}")
+    """
     return attribute_context_with_model(args, model)
+    """
 
 
 def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceModel) -> AttributeContextOutput:
@@ -510,7 +674,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                                 img_shape = img_shape, 
                                 patch_shape = patch_shape, 
                                 n_patches = n_patches,
-                                save=True) # NOSAVE: If this is False then only the img with the bboxes highlighted is saved
+                                save=True) # YESSAVE: If this is False then only the img with the bboxes highlighted is saved
     
     if args.context_image is not None:
         # Stop here for VLM as no point in showing from terminal.
