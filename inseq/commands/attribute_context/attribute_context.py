@@ -24,12 +24,11 @@ python3 -m inseq.commands.cli attribute-context --input_current_text "Describe t
 
 
 Leonardo path and use probability and not contrastive
-python3 -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/test_image.png
-
+python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
 
 PaliGemma-448
-python -m inseq.commands.cli attribute-context --input_current_text "Describe this image" --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
+python -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
 """
 
 import json
@@ -71,10 +70,18 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     import pandas as pd
     # TODO METTI IL DATASET GIUSTO
     base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    print(f"Loading dataset from {base_path}...")
     # paligemma-3b-mix-224
     df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
+    # paligemma-3b-mix-448
+    # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-448.pkl").reset_index()
     # paligemma-3b-pt-224 finetuned
     # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-pt-224_wildreceipts_the_price_is.pkl").reset_index()
+
+    # If you want to use easy vqa
+    #base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval'
+    #print(f"Loading dataset from {base_path}...")
+    #df = pd.read_csv(f"{base_path}/easyvqa_prepared.csv")
     print(f"Loading model... to device {'cuda' if torch.cuda.is_available() else 'cpu'}")
     
     from PIL import Image
@@ -92,16 +99,20 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     )
     # FOR LOADING PRETRAINED MODEL INSTEAD
     print(f"Succesfully loaded model")
+    """
     from transformers import PaliGemmaForConditionalGeneration
     import torch
     # TODO CHECK
     # DEMETRA
     # pretrained_model_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/verbose_model/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
     # LEONARDO
-    # pretrained_model_path = '/leonardo_scratch/fast/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
-    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    # model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+    pretrained_model_path = '/leonardo_scratch/fast/IscrC_XAI-MRAG/multimodal_pecore/ft_checkpoints/no_visionno_projectorpaligemma-3b-pt-224_wildreceipts_the_price_is.hf/checkpoint-150'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.model = PaliGemmaForConditionalGeneration.from_pretrained(pretrained_model_path).to(device)
+    """
 
+    # Needed to pass a path to the inseq command as we implemented it so that it needs a path and not an image.
+    # Can be easily fixed.
     def save_image_temp(image):
         temp_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
         image.save(temp_file, format="JPEG")
@@ -109,21 +120,26 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
         return temp_file.name
     
     # Files where temp are saved
-    cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
-    cci_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cci_scores'
-    bboxes_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/bboxes'
+    cti_scores_path = f'{base_path}/cti_scores'
+    cci_scores_path = f'{base_path}/cci_scores'
+    bboxes_path = f'{base_path}/bboxes'
 
     # File where to save results
     model_name = re.search(r'[^/]+$', args.model_name_or_path).group(0)
     contrastive_type_str = 'black' if args.attributed_fn == 'contrast_prob_diff' or args.attributed_fn == 'kl_divergence' else 'None'
+    # CHECK TODO MODIFY FIX BOXES
+    # contrastive_type_str = 'correct_box'
+
     ctistd_str = str(args.context_sensitivity_std_threshold) if args.context_sensitivity_std_threshold > -10 else 'all'
     ccistd_str = str(args.attribution_std_threshold) if args.attribution_std_threshold > -10 else 'all'
     # TODO FIX CHANGE
     # If there is NOT ft dataset
-    base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    base_save_path = f"{base_path}/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
     # If there is a ft dataset
-    # ft_df = 'wildreceipts_the_price_is'
-    # base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    #ft_df = 'wildreceipts_the_price_is'
+    #base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    # If you want to use easyvqa
+    # base_save_path = f"{base_path}/easyvqa_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
     save_steps = 300
     all_cti_tokens_list = []
     all_bboxes_list = []
@@ -140,17 +156,18 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     # Restart from where you finished before and finish running -> Just have to save last one
     for idx, row in df.iterrows():
         args_row = dp(args)
-        # CHECK TODO MODIFY FT
+        # CHECK TODO MODIFY FT VERBOSE
         # args_row.input_current_text = f"long answer: What is the price of {row['item'].strip()}"
-        args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
-        # args_row.input_current_text = f"Describe this image."
-        temp_img_path = save_image_temp(row['image'])       
-        args_row.context_image_path=temp_img_path
-        #args_row.context_image_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/data/dog.jpg'
-        
-        print(args_row.attributed_fn)
+        if 'wildreceipts' in base_path:
+            args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
+            temp_img_path = save_image_temp(row['image'])       
+            args_row.context_image_path=temp_img_path
+        elif 'easyvqa' in base_save_path:
+            args_row.input_current_text=row['question']
+            args_row.context_image_path=row['img_path']
+        # TODO MODIFY IF YOU DO NOT WANT THE BOX
+        # args_row.blacken_bbox_coord = row['prices_bbox'] # Add blackened coordinates bbox
         attribute_context_with_model(args_row, model)
-
         # Lists to store words, bounding boxes and cci_scores
         cti_tokens_list = []
         bboxes_list = []
@@ -239,14 +256,17 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
             print(temp_csv_path)
             df_temp.to_csv(temp_csv_path, index=False)
             temp_save_counter += 1
+
     df['cti_tokens'] = all_cti_tokens_list
     df['cti_scores'] = all_cti_scores_list
     df['bboxes'] = all_bboxes_list
     df['cci_scores'] = all_cci_scores_list
     
     final_df_path = f"{base_save_path}.pkl"
-    df.to_pickle(final_df_path)
     print(f"Saved to: {final_df_path}")
+    print(df)
+    
+    df.to_csv(final_df_path)
     """
     return attribute_context_with_model(args, model)
     """
@@ -266,8 +286,10 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             raise ValueError("Using a VLM requires an image to be passed as input.")
         if not args.context_image:
             args.context_image = transformers.image_utils.load_image(args.context_image_path)
+            blackened_image = deepcopy(args.context_image)
             # If a blacken_bbox is specified then the contrastive type is assumed to be blackened_image where the specified patch is blackened.
             if args.blacken_bbox_coord:
+                print(f"USING BBOX BLACKENED IMAGE")
                 # Check that the part required to be blackened fits.
                 if len(args.blacken_bbox_coord) != 8:
                     raise ValueError("Input needs to be a list of 8 numbers")
@@ -275,22 +297,23 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                 y_shape = args.context_image.size[1]
                 if any(coord < 0 or coord > x_shape for coord in [args.blacken_bbox_coord[0], args.blacken_bbox_coord[2], args.blacken_bbox_coord[4], args.blacken_bbox_coord[6]]):
                     raise ValueError("asking to blacken more than the whole image horizontally")
-                if any(coord < 0 or coord > x_shape for coord in [args.blacken_bbox_coord[1], args.blacken_bbox_coord[3], args.blacken_bbox_coord[5], args.blacken_bbox_coord[7]]):
+                if any(coord < 0 or coord > y_shape for coord in [args.blacken_bbox_coord[1], args.blacken_bbox_coord[3], args.blacken_bbox_coord[5], args.blacken_bbox_coord[7]]):
                     raise ValueError("asking to blacken more than the whole image vertically")
                 # Prepare
-                blackened_image = deepcopy(args.context_image)
                 pixels = blackened_image.load() # create the pixel map
+                print(f"Image size: {blackened_image.size[0], blackened_image.size[1]}")
+                print(f"Conditions: i > {args.blacken_bbox_coord[0]}, i < {args.blacken_bbox_coord[6]} and j > { args.blacken_bbox_coord[1]} and j < {args.blacken_bbox_coord[5]}")
                 for i in range(blackened_image.size[0]): # for every pixel:
                     for j in range(blackened_image.size[1]):
-                        if i > args.blacken_bbox_coord[0] and i < args.blacken_bbox_coord[6] and j > args.blacken_bbox_coord[1] and j < args.blacken_bbox_coord[5]:
+                        if i > args.blacken_bbox_coord[0] and i < args.blacken_bbox_coord[2] and j > args.blacken_bbox_coord[5] and j < args.blacken_bbox_coord[1]:
                             # change to black
                             pixels[i,j] = (0, 0 ,0)
-                
-                """# TODO RIMUOVI REMOVE SERVE SOLO PER I TEST.
-                print(f"SETTING ALL PIXELS TO WHITE FOR TRIAL")
+            else:
+                print("USING BLACK IMAGE AS CONTEXTLESS")  
+                pixels = blackened_image.load() # create the pixel map 
                 for i in range(blackened_image.size[0]):
                     for j in range(blackened_image.size[1]):
-                        pixels[i, j] = (0, 0, 0)"""
+                        pixels[i, j] = (0, 0, 0)
 
             args.contextless_image = blackened_image
             blackened_image.save('contextless_temp_img.png')
@@ -415,19 +438,21 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     )   
 
 
-    # NOSAVE
-    """import os
+    # YESSAVE
+    import os
     # No need to change since these are only stored temporally to be read back by the model.
     # DEMETRA
     # cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     # LEONARDO
     cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    #cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval/cti_scores'
+    # TODO FIX CHANGE  if you use wildreceipts
     os.makedirs(cti_scores_path, exist_ok=True)
     cti_scores_file = os.path.join(cti_scores_path, f"cti_scores.txt")
     with open(cti_scores_file, 'w') as f:
         for item in cti_ranked_tokens:
             score = item[1]
-            f.write(f"{score}\n")"""
+            f.write(f"{score}\n")
 
     output = AttributeContextOutput(
         input_context=args.input_context_text,

@@ -243,6 +243,7 @@ def visualize_image_context(image_path, cci_scores, cci_step_idx, target_word, s
     # bboxes_file_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/bboxes' 
     # LEONARDO
     bboxes_file_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/bboxes'
+    # bboxes_file_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval/bboxes'
     os.makedirs(bboxes_file_path, exist_ok=True)
     bboxes_txt_file = os.path.join(bboxes_file_path, f"step{cci_step_idx}_{target_word}_bboxes.txt")
     
@@ -256,6 +257,8 @@ def visualize_image_context(image_path, cci_scores, cci_step_idx, target_word, s
     # LEONARDO
     # FIX TODO MODIFY
     cci_file_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cci_scores'
+    # cci_file_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval/cci_scores'
+
     os.makedirs(cci_file_path, exist_ok=True)
     cci_scores_txt_file = os.path.join(cci_file_path, f"step{cci_step_idx}_{target_word}_cci_scores.txt")
     
