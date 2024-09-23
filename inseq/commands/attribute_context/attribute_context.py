@@ -26,6 +26,9 @@ python3 -m inseq.commands.cli attribute-context --input_current_text "Describe t
 Leonardo path and use probability and not contrastive
 python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
+Leonardo path and use probability + integrated-gradients:
+python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --attribution_method input_x_gradient --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
+
 
 PaliGemma-448
 python -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
@@ -127,6 +130,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     # File where to save results
     model_name = re.search(r'[^/]+$', args.model_name_or_path).group(0)
     contrastive_type_str = 'black' if args.attributed_fn == 'contrast_prob_diff' or args.attributed_fn == 'kl_divergence' else 'None'
+    attribution_method_str = 'saliency' if args.attribution_method == 'saliency' else 'inputxgradient'
     # CHECK TODO MODIFY FIX BOXES
     # contrastive_type_str = 'correct_box'
 
@@ -134,7 +138,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     ccistd_str = str(args.attribution_std_threshold) if args.attribution_std_threshold > -10 else 'all'
     # TODO FIX CHANGE
     # If there is NOT ft dataset
-    base_save_path = f"{base_path}/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
+    base_save_path = f"{base_path}/wildreceipts_pecore_results_{model_name}_{contrastive_type_str}_{args.attributed_fn}_{attribution_method_str}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
     # If there is a ft dataset
     #ft_df = 'wildreceipts_the_price_is'
     #base_save_path = f"/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/wildreceipts_pecore_results_{model_name}_{ft_df}_{contrastive_type_str}_{args.attributed_fn}_ctistd_{ctistd_str}_ccistd_{ccistd_str}"
@@ -263,10 +267,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     df['cci_scores'] = all_cci_scores_list
     
     final_df_path = f"{base_save_path}.pkl"
-    print(f"Saved to: {final_df_path}")
-    print(df)
-    
-    df.to_csv(final_df_path)
+    df.to_pickle(final_df_path)
     """
     return attribute_context_with_model(args, model)
     """
@@ -588,7 +589,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         #print(f"    Contextual output: {repr(contextual_output)}")  # context + input + output (generated with context)
         #print(f"    Position start: {pos_start}")                   # 12: position of the token currently being investigated
         #print(f"    Attributed function: {args.attributed_fn}")     # contrast_prob_diff
-        #print(f"    Attribution method: {args.attribution_method}") # saliency
+        print(f"    Attribution method: {args.attribution_method}") # saliency
         #print(f"    CCI Kwargs: {cci_kwargs}")                      # contrast_sources: only for encoder decoder I believe.
                                                                     # contrast_targets: input + generation up to CTI token (obtained without context).
                                                                     # contrast_force_inputs: True depending on how it was set above!

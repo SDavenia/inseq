@@ -764,3 +764,4 @@ tokens.txt
 ## Sbatch and output files.
 *.out
 *.sh
+/extra_samu/wildreceipts_results/images/*.png
