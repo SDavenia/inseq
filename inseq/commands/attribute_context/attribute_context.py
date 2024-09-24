@@ -26,9 +26,10 @@ python3 -m inseq.commands.cli attribute-context --input_current_text "Describe t
 Leonardo path and use probability and not contrastive
 python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
-Leonardo path and use probability + integrated-gradients:
+Leonardo path and use probability + input x gradient:
 python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --attribution_method input_x_gradient --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
+python -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
 PaliGemma-448
 python -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
@@ -72,10 +73,13 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     import torch
     import pandas as pd
     # TODO METTI IL DATASET GIUSTO
-    base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    # Leonardo
+    # base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    # Demetra
+    base_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation'
     print(f"Loading dataset from {base_path}...")
     # paligemma-3b-mix-224
-    df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
+    df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index(drop=True)
     # paligemma-3b-mix-448
     # df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-448.pkl").reset_index()
     # paligemma-3b-pt-224 finetuned
@@ -100,6 +104,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
         model_kwargs=deepcopy(args.model_kwargs),
         tokenizer_kwargs=deepcopy(args.tokenizer_kwargs),
     )
+    processor = transformers.AutoProcessor.from_pretrained(args.model_name_or_path)
     # FOR LOADING PRETRAINED MODEL INSTEAD
     print(f"Succesfully loaded model")
     """
@@ -126,6 +131,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     cti_scores_path = f'{base_path}/cti_scores'
     cci_scores_path = f'{base_path}/cci_scores'
     bboxes_path = f'{base_path}/bboxes'
+    grads_path = f'{base_path}/gradients'
 
     # File where to save results
     model_name = re.search(r'[^/]+$', args.model_name_or_path).group(0)
@@ -149,6 +155,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     all_bboxes_list = []
     all_cci_scores_list = []
     all_cti_scores_list = []
+    all_cci_backprop_scores_list = []
 
     # For temporary saves
     temp_save_counter = 0
@@ -156,8 +163,10 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     temp_bboxes_list = []
     temp_cci_scores_list = []
     temp_cti_scores_list = []
+    temp_cci_backprop_scores_list = []
 
     # Restart from where you finished before and finish running -> Just have to save last one
+    df = df.iloc[10:11]
     for idx, row in df.iterrows():
         args_row = dp(args)
         # CHECK TODO MODIFY FT VERBOSE
@@ -176,6 +185,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
         cti_tokens_list = []
         bboxes_list = []
         cci_scores_list = []
+        cci_backprop_scores_list = []
             
         # Extract words names and bboxes.
         for file_name in os.listdir(bboxes_path):
@@ -232,17 +242,41 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
                     current_cti_scores.append(score)
             cti_scores_list = current_cti_scores
             os.remove(cti_scores_file_path)
-        
+        # Extract full_gradients and aggregate them to store the gradients w.r.t the inputs
+        import sys
+        # DEMETRA
+        sys.path.append(os.path.abspath('/u/sdavenia/inseq/extra_samu'))
+        from backprop_functions import extract_norms_backprop
+
+        def extract_step_number(file_name):
+            match = re.search(r'step_(\d+)', file_name)
+            return int(match.group(1)) if match else float('inf')  # Return infinity if no match
+        # List all files and sort them based on the step number extracted
+        grad_file_list = sorted(os.listdir(grads_path), key=extract_step_number)
+        # Now you can iterate over the sorted list in the correct order
+        print(grad_file_list)
+        raise ValueError("STOP HERE")
+        inputs = processor(args_row.input_current_text, row['image'], return_tensors='pt')
+        img_pixels = inputs['pixel_values'].clone().detach().requires_grad_(True)
+        for grad_file_name in grad_file_list:
+            grad_file_name_path = f"{grads_path}/{grad_file_name}"
+            extracted_grads_step = torch.load(grad_file_name_path)
+            os.remove(grad_file_name_path)
+            backpropagated_tensor_norms = extract_norms_backprop(model, img_pixels, extracted_grads_step)
+            cci_backprop_scores_list.append(backpropagated_tensor_norms.tolist())
+
         # lists with all
         all_cti_tokens_list.append(cti_tokens_list)
         all_cti_scores_list.append(cti_scores_list)
         all_bboxes_list.append(bboxes_list)
         all_cci_scores_list.append(cci_scores_list)
+        all_cci_backprop_scores_list.append(cci_backprop_scores_list)
         # lists with temporary saves
         temp_cti_tokens_list.append(cti_tokens_list)
         temp_cti_scores_list.append(cti_scores_list)
         temp_bboxes_list.append(bboxes_list)
         temp_cci_scores_list.append(cci_scores_list)
+        temp_cci_backprop_scores_list.append(cci_backprop_scores_list)
         if (idx + 1) % save_steps == 0:
             df_temp = pd.DataFrame({
                 'cti_tokens': temp_cti_tokens_list,
@@ -255,6 +289,7 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
             temp_bboxes_list = []
             temp_cci_scores_list = []
             temp_cti_scores_list = []
+            temp_cci_backprop_scores_list = []
             # Save 
             temp_csv_path = f"{base_save_path}_temp_df_{temp_save_counter}.csv"
             print(temp_csv_path)
@@ -265,9 +300,17 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     df['cti_scores'] = all_cti_scores_list
     df['bboxes'] = all_bboxes_list
     df['cci_scores'] = all_cci_scores_list
-    
+    df['backprop_cci_scores'] = all_cci_backprop_scores_list
+
     final_df_path = f"{base_save_path}.pkl"
-    df.to_pickle(final_df_path)
+    print(df)
+    print(df.iloc[0])
+    # DEMETRA
+    
+    #df.to_pickle('/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/temp.pkl')
+    df.to_pickle('extra_samu/temp.pkl')
+    # LEONARDO
+    #df.to_pickle(final_df_path)
     """
     return attribute_context_with_model(args, model)
     """
@@ -443,9 +486,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     import os
     # No need to change since these are only stored temporally to be read back by the model.
     # DEMETRA
-    # cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     # LEONARDO
-    cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    # cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     #cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval/cti_scores'
     # TODO FIX CHANGE  if you use wildreceipts
     os.makedirs(cti_scores_path, exist_ok=True)
@@ -611,6 +654,13 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
         #print(f"selectors: {args.attribution_selectors}") # None
         #print(f"aggregators: {args.attribution_aggregators}")  # None
         #print(f"normalize_attributions: {args.normalize_attributions}") # False
+        # YESSAVE
+        target_attributions_step_cci = cci_attrib_out.sequence_attributions[0].target_attributions
+        # DEMETRA
+        full_torch_grads_path = f'/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/gradients/step_{cci_step_idx}.pt'
+        import torch
+        print(f"Saving to: {full_torch_grads_path}")
+        torch.save(target_attributions_step_cci, full_torch_grads_path)
         cci_attrib_out = aggregate_attribution_scores(
             out=cci_attrib_out,
             selectors=args.attribution_selectors,
@@ -637,7 +687,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
             args.decoder_input_output_separator,
             args.special_tokens_to_keep,
         )
-        #print(f"source scores: {len(source_scores)}\n{source_scores}") # Should contain scors for the target tokens
+        #print(f"source scores: {len(source_scores)}\n{source_scores}") # Should contain scores for the target tokens
         #print(f"target scores: {target_scores}") # None for decoder only models
         cci_out = CCIOutput(
             cti_idx=cti_idx,
@@ -693,14 +743,14 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                                 cci_step_idx=cci_step_idx,
                                 target_word = cci_out.cti_token,
                                 # DEMETRA
-                                # save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
+                                save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
                                 # LEONARDO
-                                save_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/wildreceipts_results',
+                                # save_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/wildreceipts_results',
                                 args=args,
                                 img_shape = img_shape, 
                                 patch_shape = patch_shape, 
                                 n_patches = n_patches,
-                                save=True) # YESSAVE: If this is False then only the img with the bboxes highlighted is saved
+                                save=True) # NOSAVE: If this is False then only the img with the bboxes highlighted is saved
     
     if args.context_image is not None:
         # Stop here for VLM as no point in showing from terminal.

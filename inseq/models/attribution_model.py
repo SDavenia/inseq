@@ -546,9 +546,17 @@ class AttributionModel(ABC, torch.nn.Module):
             step_scores_args=step_scores_args,  # CTI: context_image should be included here. + also contextless image
                                                 # CCI: cci_context_image should be included here.
         )
-        #if cci == 1:
-        #    #print(f"Attribution output:\n{attribution_outputs}")
-        #    raise ValueError("STOP HERE")
+        if cci == 1:
+            pass
+            #print(f"Attribution output:\n{attribution_outputs}")
+            #target_attributions = attribution_outputs[0].sequence_attributions[0].target_attributions
+            #print(f"Target attributions has shape: {target_attributions.shape}")
+            #print(f"Target attributions: {target_attributions}")
+            #print(f"Saving it")
+            #torch.save(target_attributions, 'tensor_trial.pt')
+            #raise ValueError("STOP HERE")
+            #target_attributions = attribution_outputs[0]['sequence_attributions'][0]['target_attributions']
+            #print(f"Target attributions:\n{target_attributions}")
         attribution_output = merge_attributions(attribution_outputs)
         attribution_output.info["input_texts"] = input_texts
         attribution_output.info["generated_texts"] = (
