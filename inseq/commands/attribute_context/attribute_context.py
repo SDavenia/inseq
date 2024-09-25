@@ -30,6 +30,9 @@ Leonardo path and use probability + integrated-gradients:
 python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --attribution_method input_x_gradient --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
 
 
+python3 -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn probability --attribution_method saliency --model_name "google/paligemma-3b-mix-224" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path " "
+
+
 PaliGemma-448
 python -m inseq.commands.cli attribute-context --input_current_text " " --attributed_fn contrast_prob_diff --model_name "google/paligemma-3b-mix-448" --generation_kwargs='{"max_new_tokens": 50}' --context_image_path /u/dssc/sdaven00/inseq/extra_samu/data/image_test.png
 """
@@ -38,6 +41,8 @@ import json
 import logging
 import warnings
 from copy import deepcopy
+import time
+
 
 import transformers
 
@@ -72,7 +77,10 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     import torch
     import pandas as pd
     # TODO METTI IL DATASET GIUSTO
-    base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    # LEONARDO
+    #base_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation'
+    # DEMETRA
+    base_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation'
     print(f"Loading dataset from {base_path}...")
     # paligemma-3b-mix-224
     df = pd.read_pickle(f"{base_path}/wildreceipts_correct_paligemma-3b-mix-224.pkl").reset_index()
@@ -158,13 +166,20 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
     temp_cti_scores_list = []
 
     # Restart from where you finished before and finish running -> Just have to save last one
+    df = df.iloc[0:20]
     for idx, row in df.iterrows():
+        if idx > 0:
+            break
         args_row = dp(args)
         # CHECK TODO MODIFY FT VERBOSE
         # args_row.input_current_text = f"long answer: What is the price of {row['item'].strip()}"
         if 'wildreceipts' in base_path:
-            args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
-            temp_img_path = save_image_temp(row['image'])       
+            # TODO MODIFY FIX REMOVE
+            #args_row.input_current_text = f"What is the price of {row['item'].strip()}?"
+            #temp_img_path = save_image_temp(row['image'])       
+            # To run with dog use these two
+            args_row.input_current_text = f"Describe this image"
+            temp_img_path = "/u/sdavenia/inseq/extra_samu/data/dog.jpg"
             args_row.context_image_path=temp_img_path
         elif 'easyvqa' in base_save_path:
             args_row.input_current_text=row['question']
@@ -261,13 +276,29 @@ def attribute_context(args: AttributeContextArgs) -> AttributeContextOutput:
             df_temp.to_csv(temp_csv_path, index=False)
             temp_save_counter += 1
 
-    df['cti_tokens'] = all_cti_tokens_list
+    # REMOVE LEONARDO DEMETRA TODO TOFIX for dog.
+    """df['cti_tokens'] = all_cti_tokens_list
     df['cti_scores'] = all_cti_scores_list
     df['bboxes'] = all_bboxes_list
-    df['cci_scores'] = all_cci_scores_list
+    df['cci_scores'] = all_cci_scores_list"""
+    import PIL
+    img = PIL.Image.open("/u/sdavenia/inseq/extra_samu/data/lake.png")
+    text = "Describe this image"
+    data_dict = {
+        'img': img,
+        'text': text,
+        'cti_tokens' : all_cti_tokens_list,
+        'cti_scores': all_cti_scores_list,
+        'bboxes' : all_bboxes_list,
+        'cci_scores' : all_cci_scores_list
+    }
+    df = pd.DataFrame.from_dict(data_dict)
     
     final_df_path = f"{base_save_path}.pkl"
-    df.to_pickle(final_df_path)
+    #df.to_pickle(f'{base_save_path}_OCR.pkl')
+    #df.to_pickle(final_df_path)
+    df.to_pickle('dog_df_inputxgradient.pkl')
+    # df.to_pickle()
     """
     return attribute_context_with_model(args, model)
     """
@@ -384,7 +415,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     if model.is_vlm:
         formatted_output_current_text = formatted_output_current_text[:len(formatted_input_current_text)].strip() + '\n' + formatted_output_current_text[len(formatted_input_current_text):].strip()
         formatted_input_current_text = formatted_input_current_text.strip() + '\n'
-    # print(repr(print(formatted_output_current_text)))
+    print(f"Model output is:")
+    print(repr(print(formatted_output_current_text)))
+    time.sleep(10)
     # output_full_text = formatted_output_current_text
     # print(f"formatted_input_current_text: {repr(formatted_input_current_text)}")
     # print(f"formatted_output_current_text: {repr(formatted_output_current_text)}")
@@ -443,9 +476,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     import os
     # No need to change since these are only stored temporally to be read back by the model.
     # DEMETRA
-    # cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    cti_scores_path = '/u/sdavenia/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     # LEONARDO
-    cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
+    # cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/wildreceipts_evaluation/cti_scores'
     #cti_scores_path = '/leonardo/home/userexternal/sdavenia/VLM_experiments_dir/VLM_Experiments/analyze_registers/easyvqa_eval/cti_scores'
     # TODO FIX CHANGE  if you use wildreceipts
     os.makedirs(cti_scores_path, exist_ok=True)
@@ -467,6 +500,7 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
     )
     # Part 2: Contextual Cues Imputation (CCI)
     print(f"CTI ranked tokens: {cti_ranked_tokens}")
+    time.sleep(10)
     print(f"Entering CCI...")
 
     # Iterate over all context sensitive generated tokens.
@@ -693,9 +727,9 @@ def attribute_context_with_model(args: AttributeContextArgs, model: HuggingfaceM
                                 cci_step_idx=cci_step_idx,
                                 target_word = cci_out.cti_token,
                                 # DEMETRA
-                                # save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
+                                save_path = '/u/sdavenia/inseq/extra_samu/wildreceipts_results',
                                 # LEONARDO
-                                save_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/wildreceipts_results',
+                                #save_path = '/leonardo/home/userexternal/sdavenia/inseq_dir/inseq/extra_samu/wildreceipts_results',
                                 args=args,
                                 img_shape = img_shape, 
                                 patch_shape = patch_shape, 
